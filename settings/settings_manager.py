@@ -105,7 +105,7 @@ class SettingsManager(MutableMapping):
         save_on_exit: bool = False,
         save_on_change: bool = False,
         use_logger: bool = False,
-        log_file: str = None,
+        log_file: Optional[str] = None,
         sanitize: bool = False,
         format: Optional[str] = None,
     ) -> None:
