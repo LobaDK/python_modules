@@ -239,7 +239,7 @@ class SettingsManager(MutableMapping):
             with open(self.read_path, "r") as f:
                 self.data = toml_load(f)
         elif self.format == "ini":
-            config = ConfigParser()
+            config = ConfigParser(allow_no_value=True)
             config.read(self.read_path)
             self.data = {
                 section: dict(config.items(section)) for section in config.sections()
@@ -260,7 +260,7 @@ class SettingsManager(MutableMapping):
             with open(self.write_path, "w") as file:
                 toml_dump(self.data, file)
         elif self.format == "ini":
-            config = ConfigParser()
+            config = ConfigParser(allow_no_value=True)
             for section, settings in self.data.items():
                 config[section] = settings
             with open(self.write_path, "w") as file:
