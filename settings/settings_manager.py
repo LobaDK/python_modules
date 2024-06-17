@@ -194,6 +194,11 @@ class SettingsManager(MutableMapping):
                 message=f"Settings file {self.read_path} exists; loading settings."
             )
             self._load()
+        else:
+            self.log_or_print(
+                message=f"Settings file {self.read_path} does not exist; using default settings."
+            )
+            self.data = self.default_settings
         self.log_or_print(message=f"Is save_on_change enabled? {self.save_on_change}.")
         self.log_or_print(
             message=f"SettingsManager initialized with format {self.format}."
