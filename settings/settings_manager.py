@@ -42,7 +42,7 @@ except ImportError:
     pass
 
 try:
-    from log_helper.log_helper import LogHelper
+    from ..log_helper.log_helper import LogHelper
 
     logging_available = True
 except ImportError:
