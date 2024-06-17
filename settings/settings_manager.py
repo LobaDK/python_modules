@@ -105,6 +105,7 @@ class SettingsManager(MutableMapping):
         save_on_exit: bool = False,
         save_on_change: bool = False,
         use_logger: bool = False,
+        log_file: str = None,
         sanitize: bool = False,
         format: Optional[str] = None,
     ) -> None:
@@ -119,6 +120,7 @@ class SettingsManager(MutableMapping):
             save_on_exit (bool, optional): Whether to save the settings when the program exits. Defaults to False.
             save_on_change (bool, optional): Whether to save the settings when they are changed. May cause slowdowns if the settings are changed frequently. Try and update the settings in bulk. Defaults to False.
             use_logger (bool, optional): Whether to use a Logger. If false, only severe errors will be printed using `print()`. Defaults to False.
+            log_file (str, optional): The path and name of the log file. Defaults to None.
             sanitize (bool, optional): Whether to sanitize and check the settings before reading/writing. Defaults to False.
             format (Optional[str], optional): The format is automatically guessed from the extension, but this can be used to override it. Defaults to None.
 
@@ -138,10 +140,13 @@ class SettingsManager(MutableMapping):
             raise ValueError("You must provide default_settings.")
         if not logging_available and use_logger:
             raise ValueError("The log_helper module is not available.")
+        if not use_logger and log_file:
+            raise ValueError("You must enable use_logger to use a log file.")
 
         if use_logger:
             self.logger: Logger = LogHelper.create_logger(
-                logger_name="SettingsManager", log_file="settings.log"
+                logger_name="SettingsManager",
+                log_file="settings.log" if not log_file else log_file,
             )
 
         if path:
