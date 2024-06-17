@@ -16,9 +16,6 @@ from json import load, dump
 from configparser import ConfigParser
 from collections.abc import MutableMapping
 from atexit import register
-from sys import path as sys_path
-
-sys_path.append(str(Path(__file__).resolve().parent.parent))
 
 
 # Initialize flags indicating the availability of optional modules
