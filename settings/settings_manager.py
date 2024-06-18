@@ -10,7 +10,7 @@ This module is distributed in the hope that it will be useful, but WITHOUT ANY W
 """
 
 from logging import Logger
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, Iterator
 from pathlib import Path
 from json import load, dump
 from configparser import ConfigParser
@@ -215,11 +215,26 @@ class SettingsManager(MutableMapping):
 
     @data.setter
     def data(self, value: Dict) -> None:
+        """
+        Set the settings data and optionally save it.
+
+        Args:
+            value (Dict): The settings data to set.
+        """
         self._data = value
         if self.save_on_change:
             self.save()
 
     def _get_format(self) -> str:
+        """
+        Determines the format of the file based on its extension.
+
+        Returns:
+            str: The format of the file (json, yaml, toml, ini).
+
+        Raises:
+            ValueError: If the file extension is not supported.
+        """
         if self.read_path.endswith(".json"):
             return "json"
         elif self.read_path.endswith(".yaml") or self.read_path.endswith(".yml"):
@@ -233,45 +248,69 @@ class SettingsManager(MutableMapping):
                 f"Trying to determine format from file extension, got {self.read_path} but only {', '.join(SUPPORTED_FORMATS)} are supported."
             )
 
-    def _load(self):
+    def load(self):
+        """
+        Load the settings from a file.
+
+        The format of the file is determined by the `format` attribute of the `SettingsManager` instance.
+
+        Raises:
+            IOError: If there is an error while reading the settings from the file.
+
+        """
         if self.format == "json":
-            with open(self.read_path, "r") as f:
-                self.data = load(f)
+            with open(file=self.read_path, mode="r") as f:
+                self.data = load(fp=f)
         elif self.format == "yaml":
-            with open(self.read_path, "r") as f:
+            with open(file=self.read_path, mode="r") as f:
                 self.data = safe_load(f)
         elif self.format == "toml":
-            with open(self.read_path, "r") as f:
+            with open(file=self.read_path, mode="r") as f:
                 self.data = toml_load(f)
         elif self.format == "ini":
             config = ConfigParser(allow_no_value=True)
-            config.read(self.read_path)
+            config.read(filenames=self.read_path)
             self.data = {
-                section: dict(config.items(section)) for section in config.sections()
+                section: dict(config.items(section=section))
+                for section in config.sections()
             }
         if self.sanitize:
             self.sanitize_settings()
 
     def save(self) -> None:
+        """
+        Save the settings to a file.
+
+        If the `sanitize` flag is set to True, the settings will be sanitized before saving.
+        The format of the file is determined by the `format` attribute of the `SettingsManager` instance.
+
+        Raises:
+            IOError: If there is an error while writing the settings to the file.
+
+        """
         if self.sanitize:
             self.sanitize_settings()
         if self.format == "json":
-            with open(self.write_path, "w") as file:
-                dump(self.data, file, indent=4)
+            with open(file=self.write_path, mode="w") as file:
+                dump(obj=self.data, fp=file, indent=4)
         elif self.format == "yaml" and yaml_available:
-            with open(self.write_path, "w") as file:
+            with open(file=self.write_path, mode="w") as file:
                 safe_dump(self.data, file)
         elif self.format == "toml" and toml_available:
-            with open(self.write_path, "w") as file:
+            with open(file=self.write_path, mode="w") as file:
                 toml_dump(self.data, file)
         elif self.format == "ini":
             config = ConfigParser(allow_no_value=True)
             for section, settings in self.data.items():
                 config[section] = settings
-            with open(self.write_path, "w") as file:
-                config.write(file)
+            with open(file=self.write_path, mode="w") as file:
+                config.write(fp=file)
 
     def sanitize_settings(self) -> None:
+        """
+        Sanitizes the settings data by removing any keys that are not present in the default settings
+        and adding any missing keys from the default settings with their default values.
+        """
         keys_to_remove = [key for key in self.data if key not in self.default_settings]
         for key in keys_to_remove:
             del self.data[key]
@@ -283,28 +322,28 @@ class SettingsManager(MutableMapping):
     def log_or_print(self, message: str, level: str = "info") -> None:
         if self.use_logger:
             if level == "info":
-                self.logger.info(message)
+                self.logger.info(msg=message)
             elif level == "warning":
-                self.logger.warning(message)
+                self.logger.warning(msg=message)
             elif level == "error":
-                self.logger.error(message)
+                self.logger.error(msg=message)
             elif level == "critical":
-                self.logger.critical(message)
+                self.logger.critical(msg=message)
             elif level == "exception":
-                self.logger.exception(message)
+                self.logger.exception(msg=message)
         elif level == "error" or level == "critical":
             print(f"{level.upper()} ({__name__}): {message}")
 
-    def __getitem__(self, key):
+    def __getitem__(self, key) -> Any:
         return self.data[key]
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key, value) -> None:
         self.data[key] = value
 
-    def __delitem__(self, key):
+    def __delitem__(self, key) -> None:
         del self.data[key]
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator:
         return iter(self.data)
 
     def __len__(self):
