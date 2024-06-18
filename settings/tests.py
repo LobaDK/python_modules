@@ -27,13 +27,13 @@ class TestSettingsManager(unittest.TestCase):
             sanitize=True,
             format="json",
         )
-        self.assertEqual(settings_manager.default_settings, {"key": "value"})
-        self.assertEqual(settings_manager.read_path, "settings.json")
-        self.assertEqual(settings_manager.write_path, "settings.json")
-        self.assertTrue(settings_manager.save_on_exit)
-        self.assertTrue(settings_manager.use_logger)
-        self.assertTrue(settings_manager.sanitize)
-        self.assertEqual(settings_manager.format, "json")
+        self.assertEqual(settings_manager._default_settings, {"key": "value"})
+        self.assertEqual(settings_manager._read_path, "settings.json")
+        self.assertEqual(settings_manager._write_path, "settings.json")
+        self.assertTrue(settings_manager._save_on_exit)
+        self.assertTrue(settings_manager._use_logger)
+        self.assertTrue(settings_manager._sanitize)
+        self.assertEqual(settings_manager._format, "json")
 
     def test_get_format(self):
         # Test that the get_format method returns the correct format
