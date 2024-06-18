@@ -198,7 +198,7 @@ class SettingsManager(MutableMapping):
             self.log_or_print(
                 message=f"Settings file {self.read_path} exists; loading settings."
             )
-            self._load()
+            self.load()
         else:
             self.log_or_print(
                 message=f"Settings file {self.read_path} does not exist; using default settings."
