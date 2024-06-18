@@ -170,7 +170,7 @@ class SettingsManager(MutableMapping):
             self.format = self._get_format()
 
         if self.format not in SUPPORTED_FORMATS:
-            self.log_or_print(
+            self._log_or_print(
                 message=f"User tried to use unsupported format {self.format}."
             )
             raise ValueError(
@@ -178,34 +178,36 @@ class SettingsManager(MutableMapping):
             )
 
         if self.format == "yaml" and not yaml_available:
-            self.log_or_print(
+            self._log_or_print(
                 message="User tried to use yaml format without the yaml module."
             )
             raise ValueError("The yaml module is not available.")
         elif self.format == "toml" and not toml_available:
-            self.log_or_print(
+            self._log_or_print(
                 message="User tried to use toml format without the toml module."
             )
             raise ValueError("The toml module is not available.")
 
         if save_on_exit:
-            self.log_or_print(
+            self._log_or_print(
                 message="save_on_exit is enabled; registering save method."
             )
             register(self.save)
 
         if Path(self.read_path).exists():
-            self.log_or_print(
+            self._log_or_print(
                 message=f"Settings file {self.read_path} exists; loading settings."
             )
             self.load()
         else:
-            self.log_or_print(
-                message=f"Settings file {self.read_path} does not exist; using default settings."
+            self._log_or_print(
+                message=f"Settings file {self.read_path} does not exist; applying default settings and saving."
             )
             self.data = self.default_settings
-        self.log_or_print(message=f"Is save_on_change enabled? {self.save_on_change}.")
-        self.log_or_print(
+            self.save()
+
+        self._log_or_print(message=f"Is save_on_change enabled? {self.save_on_change}.")
+        self._log_or_print(
             message=f"SettingsManager initialized with format {self.format}."
         )
 
@@ -319,7 +321,7 @@ class SettingsManager(MutableMapping):
             if key not in self.data:
                 self.data[key] = value
 
-    def log_or_print(self, message: str, level: str = "info") -> None:
+    def _log_or_print(self, message: str, level: str = "info") -> None:
         if self.use_logger:
             if level == "info":
                 self.logger.info(msg=message)
