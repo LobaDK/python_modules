@@ -10,13 +10,24 @@ This module is distributed in the hope that it will be useful, but WITHOUT ANY W
 """
 
 from logging import Logger
-from typing import Dict, Optional, Any, Iterator
+from typing import (
+    Dict,
+    Optional,
+    Any,
+    Iterator,
+    TypeVar,
+    Type,
+    Union,
+)
 from pathlib import Path
 from json import load, dump
 from configparser import ConfigParser
 from collections.abc import MutableMapping
 from atexit import register
+from dacite import from_dict
+from dataclasses import asdict, is_dataclass
 
+T = TypeVar("T")
 
 # Initialize flags indicating the availability of optional modules
 yaml_available = False
@@ -101,7 +112,7 @@ class SettingsManager(MutableMapping):
         *,
         read_path: Optional[str] = None,
         write_path: Optional[str] = None,
-        default_settings: Dict,
+        default_settings: Union[Dict[str, Any], object],
         save_on_exit: bool = False,
         save_on_change: bool = False,
         use_logger: bool = False,
@@ -156,7 +167,7 @@ class SettingsManager(MutableMapping):
             self.read_path = read_path
             self.write_path = write_path
 
-        self.default_settings: Dict = default_settings
+        self.default_settings: Union[Dict[str, Any], object] = default_settings
         self.save_on_exit: bool = save_on_exit
         self.save_on_change: bool = save_on_change
         self.use_logger: bool = use_logger
@@ -203,7 +214,7 @@ class SettingsManager(MutableMapping):
             self._log_or_print(
                 message=f"Settings file {self.read_path} does not exist; applying default settings and saving."
             )
-            self.data = self.default_settings
+            self.load_from_default()
             self.save()
 
         self._log_or_print(message=f"Is save_on_change enabled? {self.save_on_change}.")
@@ -250,7 +261,7 @@ class SettingsManager(MutableMapping):
                 f"Trying to determine format from file extension, got {self.read_path} but only {', '.join(SUPPORTED_FORMATS)} are supported."
             )
 
-    def load(self):
+    def load(self) -> None:
         """
         Load the settings from a file.
 
@@ -313,11 +324,21 @@ class SettingsManager(MutableMapping):
         Sanitizes the settings data by removing any keys that are not present in the default settings
         and adding any missing keys from the default settings with their default values.
         """
-        keys_to_remove = [key for key in self.data if key not in self.default_settings]
+        _default_settings: Dict
+        if isinstance(self.default_settings, dict):
+            _default_settings = self.default_settings
+        elif is_dataclass(obj=self.default_settings):
+            try:
+                _default_settings = asdict(obj=self.default_settings)  # type: ignore
+            except TypeError as e:
+                raise TypeError(
+                    f"default_settings must be a dict or a dataclass instance, not {type(self.default_settings)}."
+                ) from e
+        keys_to_remove = [key for key in self.data if key not in _default_settings]
         for key in keys_to_remove:
             del self.data[key]
 
-        for key, value in self.default_settings.items():
+        for key, value in _default_settings.items():
             if key not in self.data:
                 self.data[key] = value
 
@@ -335,6 +356,42 @@ class SettingsManager(MutableMapping):
                 self.logger.exception(msg=message)
         elif level == "error" or level == "critical":
             print(f"{level.upper()} ({__name__}): {message}")
+
+    def to_object(self, data_class: Type[T]) -> T:
+        """
+        Converts the data stored in the settings manager to an object of the specified data class.
+
+        Args:
+            data_class (Type[T]): The class of the object to convert the data to.
+
+        Returns:
+            T: An object of the specified data class with the converted data.
+        """
+        return from_dict(data_class=data_class, data=self.data)
+
+    def load_from_default(self) -> None:
+        """
+        Loads the default settings into the data attribute.
+
+        If the default_settings attribute is a dictionary, it directly assigns it to the data attribute.
+        If the default_settings attribute is a dataclass instance, it converts it to a dictionary using the asdict function from the dataclasses module.
+
+        Raises:
+            TypeError: If default_settings is neither a dictionary nor a dataclass instance.
+        """
+        if isinstance(self.default_settings, dict):
+            self.data = self.default_settings
+        elif is_dataclass(obj=self.default_settings):
+            try:
+                self.data = asdict(obj=self.default_settings)  # type: ignore
+            except TypeError as e:
+                raise TypeError(
+                    f"default_settings must be a dict or a dataclass instance, not {type(self.default_settings)}."
+                ) from e
+        else:
+            raise TypeError(
+                f"default_settings must be a dict or a dataclass instance, not {type(self.default_settings)}."
+            )
 
     def __getitem__(self, key) -> Any:
         return self.data[key]
