@@ -377,18 +377,6 @@ def create_settings_manager(
             sanitize=sanitize,
             format=format,
         )
-    elif is_dataclass(obj=default_settings):
-        return SettingsManagerAsDataclass(
-            path,
-            read_path=read_path,
-            write_path=write_path,
-            default_settings=default_settings,
-            save_on_exit=save_on_exit,
-            save_on_change=save_on_change,
-            logger=logger,
-            sanitize=sanitize,
-            format=format,
-        )
 
 
 class SettingsManager(MutableMapping):
