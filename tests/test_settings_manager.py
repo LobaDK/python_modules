@@ -1,19 +1,10 @@
-from os import path
 from os import unlink
 import unittest
-from unittest.mock import patch
-import atexit
 
-from settings.settings_manager import SettingsManagerAsDataclass, SettingsManagerAsDict
-from .settings_manager import create_settings_manager
-from .exceptions import (
-    SettingsException,
-    InvalidPathError,
+from settings.settings_manager import SettingsManagerAsDict
+from settings.settings_manager import create_settings_manager
+from settings.exceptions import (
     UnsupportedFormatError,
-    MissingDependencyError,
-    SanitizationError,
-    SaveError,
-    LoadError,
 )
 
 
@@ -25,10 +16,8 @@ class TestSettingsManager(unittest.TestCase):
             "Testing if format is correctly determined and if invalid formats raise an exception..."
         )
         for format in ["json", "yaml", "toml", "ini"]:
-            default_settings: dict[str, dict[str, str]] = {"section": {"key": "value"}}
-            settings_manager: (
-                SettingsManagerAsDict | SettingsManagerAsDataclass | None
-            ) = create_settings_manager(
+            default_settings = {"section": {"key": "value"}}
+            settings_manager = create_settings_manager(
                 f"settings.{format}", default_settings=default_settings
             )
             self.assertEqual(first=settings_manager._get_format(), second=format)
@@ -42,9 +31,7 @@ class TestSettingsManager(unittest.TestCase):
         for format in ["json", "yaml", "toml", "ini"]:
             default_settings: dict[str, dict[str, str]] = {"section": {"key": "value"}}
             settings_path: str = f"settings.{format}"
-            settings_manager: (
-                SettingsManagerAsDict | SettingsManagerAsDataclass | None
-            ) = create_settings_manager(
+            settings_manager: SettingsManagerAsDict = create_settings_manager(
                 settings_path, default_settings=default_settings
             )
             self.assertEqual(
@@ -58,9 +45,7 @@ class TestSettingsManager(unittest.TestCase):
         print("Testing if the settings are correctly set...")
         for format in ["json", "yaml", "toml", "ini"]:
             default_settings: dict[str, dict[str, str]] = {"section": {"key": "value"}}
-            settings_manager: (
-                SettingsManagerAsDict | SettingsManagerAsDataclass | None
-            ) = create_settings_manager(
+            settings_manager: SettingsManagerAsDict = create_settings_manager(
                 f"settings.{format}", default_settings=default_settings
             )
             new_settings: dict[str, dict[str, str]] = {"section": {"key": "new_value"}}
@@ -75,9 +60,7 @@ class TestSettingsManager(unittest.TestCase):
         print("Testing if the settings are correctly deleted...")
         for format in ["json", "yaml", "toml", "ini"]:
             default_settings: dict[str, dict[str, str]] = {"section": {"key": "value"}}
-            settings_manager: (
-                SettingsManagerAsDict | SettingsManagerAsDataclass | None
-            ) = create_settings_manager(
+            settings_manager: SettingsManagerAsDict = create_settings_manager(
                 f"settings.{format}", default_settings=default_settings
             )
             del settings_manager["section"]["key"]
