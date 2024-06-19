@@ -10,15 +10,7 @@ This module is distributed in the hope that it will be useful, but WITHOUT ANY W
 """
 
 from logging import Logger
-from typing import (
-    Dict,
-    Optional,
-    Any,
-    Iterator,
-    TypeVar,
-    Type,
-    Union,
-)
+from typing import Dict, Optional, Any, Iterator, TypeVar, Type, Union, IO, Callable
 from pathlib import Path
 from json import load, dump
 from configparser import ConfigParser
@@ -26,6 +18,15 @@ from collections.abc import MutableMapping
 from atexit import register
 from dacite import from_dict
 from dataclasses import asdict, is_dataclass
+
+from .exceptions import (
+    InvalidPathError,
+    UnsupportedFormatError,
+    MissingDependencyError,
+    SanitizationError,
+    SaveError,
+    LoadError,
+)
 
 T = TypeVar("T")
 
@@ -57,6 +58,337 @@ except ImportError:
     pass
 
 SUPPORTED_FORMATS: list[str] = ["json", "yaml", "toml", "ini"]
+
+
+class SettingsManagerBase:
+    # TODO: Implement a base class for the SettingsManager that provides common functionality for all implementations.
+    def __init__(
+        self,
+        path: Optional[str] = None,
+        /,
+        *,
+        read_path: Optional[str] = None,
+        write_path: Optional[str] = None,
+        default_settings: Union[Dict[str, Any], object],
+        save_on_exit: bool = False,
+        save_on_change: bool = False,
+        logger: Optional[Logger] = None,
+        sanitize: bool = False,
+        format: Optional[str] = None,
+    ) -> None:
+        if not path and not (read_path or write_path):
+            raise InvalidPathError(
+                "You must provide a path or read_path and write_path."
+            )
+        if path and (read_path or write_path):
+            raise InvalidPathError(
+                "You must provide a path or read_path and write_path, not both."
+            )
+
+        self._logger: Optional[Logger] = logger
+
+        if path:
+            self._read_path: str = path
+            self._write_path: str = path
+        elif read_path and write_path:
+            self._read_path = read_path
+            self._write_path = write_path
+
+        self._default_settings: Union[Dict[str, Any], object] = default_settings
+        self._sanitize: bool = sanitize
+        self._save_on_change: bool = save_on_change
+
+        # Internal data storage. This attribute is used to store the settings data and is accessed through the _data property.
+        # Subclasses should implement their own data storage which syncs with this attribute and exposes the data to the user.
+        # When the user changes a setting, it should propagate to this attribute.
+        # It can store any type of data, so the subclass is instead responsible for converting it to the appropriate format by implementing the _to_dict method.
+        self.__data: Any = None
+
+        if format:
+            self._format: str = format
+        else:
+            self._format = self._get_format()
+
+        if self._format not in SUPPORTED_FORMATS:
+            if self._logger:
+                self._logger.error(
+                    msg=f"Format {self._format} is not in the list of supported formats: {', '.join(SUPPORTED_FORMATS)}."
+                )
+            raise UnsupportedFormatError(
+                f"Format {self._format} is not in the list of supported formats: {', '.join(SUPPORTED_FORMATS)}."
+            )
+
+        if self._format == "yaml" and not yaml_available:
+            if self._logger:
+                self._logger.error(msg="The yaml module is not available.")
+            raise MissingDependencyError("The yaml module is not available.")
+
+        if self._format == "toml" and not toml_available:
+            if self._logger:
+                self._logger.error(msg="The toml module is not available.")
+            raise MissingDependencyError("The toml module is not available.")
+
+        if save_on_exit:
+            if self._logger:
+                self._logger.info(
+                    msg="save_on_exit is enabled; registering save method."
+                )
+            register(self.save)
+
+        if Path(self._read_path).exists():
+            if self._logger:
+                self._logger.info(
+                    msg=f"Settings file {self._read_path} exists; loading settings."
+                )
+            self.load()
+
+        else:
+            if self._logger:
+                self._logger.info(
+                    msg=f"Settings file {self._read_path} does not exist; applying default settings and saving."
+                )
+            self.load_from_default()
+            self.save()
+
+        if self._logger:
+            self._logger.info(msg=f"Save on change? {self._save_on_change}.")
+            self._logger.info(
+                msg=f"SettingsManager initialized with format {self._format}."
+            )
+
+    @property
+    def _data(self) -> Any:
+        return self.__data
+
+    @_data.setter
+    def _data(self, value: Any) -> None:
+        self.__data = value
+        if self._save_on_change:
+            self.save()
+
+    def _to_dict(self, data: Any) -> Dict[str, Any]:
+        """
+        Stub method. Is called by various internal functions that require the data to be in a dictionary. Subclasses MUST implement this method to comply with their data storage format. Refer to the SettingsManagerAsDataclass class for an example implementation.
+        """
+        return data
+
+    def save(self) -> None:
+        settings_data: Dict[str, Any] = self._to_dict(data=self.__data)
+        try:
+            with open(file=self._write_path, mode="w") as file:
+                self._write(data=settings_data, file=file)
+        except IOError as e:
+            if self._logger:
+                self._logger.exception(msg="Error while writing settings to file.")
+            raise SaveError("Error while writing settings to file.") from e
+
+    def _write(self, data: Dict[str, Any], file: IO) -> None:
+        format_to_function: Dict[str, Callable] = {
+            "json": self._write_as_json,
+            "yaml": self._write_as_yaml,
+            "toml": self._write_as_toml,
+            "ini": self._write_as_ini,
+        }
+        if self._format in format_to_function:
+            write_function: Callable = format_to_function[self._format]
+            write_function(data=data, file=file)
+        else:
+            if self._logger:
+                self._logger.error(
+                    msg=f"Format {self._format} is not in the list of supported formats: {', '.join(SUPPORTED_FORMATS)}."
+                )
+            raise UnsupportedFormatError(
+                f"Format {self._format} is not in the list of supported formats: {', '.join(SUPPORTED_FORMATS)}."
+            )
+
+    def _write_as_json(self, data: Dict[str, Any], file: IO) -> None:
+        dump(obj=data, fp=file, indent=4)
+
+    def _write_as_yaml(self, data: Dict[str, Any], file: IO) -> None:
+        safe_dump(data, file)
+
+    def _write_as_toml(self, data: Dict[str, Any], file: IO) -> None:
+        toml_dump(data, file)
+
+    def _write_as_ini(self, data: Dict[str, Any], file: IO) -> None:
+        config = ConfigParser(allow_no_value=True)
+        for section, settings in data.items():
+            config[section] = settings
+        config.write(fp=file)
+
+    def load(self) -> None:
+        try:
+            with open(file=self._read_path, mode="r") as f:
+                self.__data = self._read(file=f)
+        except IOError as e:
+            if self._logger:
+                self._logger.exception(msg="Error while reading settings from file.")
+            raise LoadError("Error while reading settings from file.") from e
+
+    def _read(self, file: IO) -> Dict[str, Any]:
+        format_to_function: Dict[str, Callable] = {
+            "json": self._read_as_json,
+            "yaml": self._read_as_yaml,
+            "toml": self._read_as_toml,
+            "ini": self._read_as_ini,
+        }
+        if self._format in format_to_function:
+            read_function: Callable = format_to_function[self._format]
+            return read_function(file=file)
+        else:
+            raise UnsupportedFormatError(
+                f"Format {self._format} is not in the list of supported formats: {', '.join(SUPPORTED_FORMATS)}."
+            )
+
+    def _read_as_json(self, file: IO) -> Dict[str, Any]:
+        return load(fp=file)
+
+    def _read_as_yaml(self, file: IO) -> Dict[str, Any]:
+        return safe_load(file)
+
+    def _read_as_toml(self, file: IO) -> Dict[str, Any]:
+        return toml_load(file)
+
+    def _read_as_ini(self, file: IO) -> Dict[str, Any]:
+        config = ConfigParser(allow_no_value=True)
+        config.read_file(f=file)
+        return {
+            section: dict(config.items(section=section))
+            for section in config.sections()
+        }
+
+    def _get_format(self) -> str:
+        if Path(self._read_path).suffix != Path(self._write_path).suffix:
+            raise UnsupportedFormatError(
+                "Read and write paths must have the same file extension when not specifying a format."
+            )
+        extension_to_format: Dict[str, str] = {
+            ".json": "json",
+            ".yaml": "yaml",
+            ".yml": "yaml",
+            ".toml": "toml",
+            ".ini": "ini",
+        }
+        if Path(self._read_path).suffix in extension_to_format:
+            return extension_to_format[Path(self._read_path).suffix]
+        else:
+            raise UnsupportedFormatError(
+                f"Trying to determine format from file extension, got {self._read_path} but only {', '.join(SUPPORTED_FORMATS)} are supported."
+            )
+
+    def load_from_default(self) -> None:
+        self.__data = self._to_dict(data=self._default_settings)
+
+    def sanitize_settings(self) -> None:
+        default: Dict[str, Any] = self._to_dict(data=self._default_settings)
+        data: Dict[str, Any] = self._to_dict(data=self.__data)
+
+        try:
+            self.__data = self._sanitize_settings(default=default, data=data)
+        except SanitizationError as e:
+            if self._logger:
+                self._logger.exception(msg="Error while sanitizing settings.")
+            raise e
+
+    def _sanitize_settings(
+        self, default: Dict[str, Any], data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        try:
+            keys_to_remove: list[str] = [key for key in data if key not in default]
+            for key in keys_to_remove:
+                del data[key]
+
+            for key, value in default.items():
+                if key not in data:
+                    data[key] = value
+
+            return data
+        except Exception as e:
+            raise SanitizationError("Error while sanitizing settings.") from e
+
+
+class SettingsManagerAsDict(SettingsManagerBase, MutableMapping):
+    # TODO: Implement a SettingsManager that uses a dictionary as the data attribute instead of a dataclass instance.
+    def __getitem__(self, key: str) -> Any:
+        # Get the item directly from the internal data attribute
+        return self._data[key]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        # Set the item in the data property, which will propagate to the internal data attribute and auto-save if save_on_change is enabled
+        self._data[key] = value
+
+    def __delitem__(self, key: str) -> None:
+        del self._data[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._data)
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+
+class SettingsManagerAsDataclass:
+    # TODO: Implement a SettingsManager that uses a dataclass instance as the data attribute instead of a dictionary.
+    pass
+
+
+def create_settings_manager(
+    path: Optional[str] = None,
+    /,
+    *,
+    read_path: Optional[str] = None,
+    write_path: Optional[str] = None,
+    default_settings: Union[Dict[str, Any], object],
+    save_on_exit: bool = False,
+    save_on_change: bool = False,
+    logger: Optional[Logger] = None,
+    sanitize: bool = False,
+    format: Optional[str] = None,
+):
+    """
+    Factory function for creating a SettingsManager instance.
+
+    Args:
+        path (Optional[str], optional): The path and name of the settings file being written to and read from. Defaults to None.
+        read_path (Optional[str], optional): The path and name of the settings file being read from. Defaults to None.
+        write_path (Optional[str], optional): The path and name of settings file being written to. Defaults to None.
+        default_settings (Union[Dict[str, Any], object]): The default settings to use when the settings file does not exist or is missing keys. Can be a dictionary or a dataclass instance.
+        save_on_exit (bool, optional): Whether to save the settings when the program exits. Defaults to False.
+        save_on_change (bool, optional): Whether to save the settings when they are changed. May cause slowdowns if the settings are changed frequently. Try and update the settings in bulk. Defaults to False.
+        logger (Optional[Logger], optional): A logger instance to use for logging. Defaults to None.
+        sanitize (bool, optional): Whether to sanitize and check the settings before reading/writing. Defaults to False.
+        format (Optional[str], optional): The format is automatically guessed from the extension, but this can be used to override it. Defaults to None.
+
+    Returns:
+        SettingsManager: A SettingsManager instance.
+
+    Raises:
+        InvalidPathError: If both `path` and either `read_path` or `write_path` are provided, or if none are provided.
+    """
+    if isinstance(default_settings, dict):
+        return SettingsManagerAsDict(
+            path,
+            read_path=read_path,
+            write_path=write_path,
+            default_settings=default_settings,
+            save_on_exit=save_on_exit,
+            save_on_change=save_on_change,
+            logger=logger,
+            sanitize=sanitize,
+            format=format,
+        )
+    elif is_dataclass(obj=default_settings):
+        return SettingsManagerAsDataclass(
+            path,
+            read_path=read_path,
+            write_path=write_path,
+            default_settings=default_settings,
+            save_on_exit=save_on_exit,
+            save_on_change=save_on_change,
+            logger=logger,
+            sanitize=sanitize,
+            format=format,
+        )
 
 
 class SettingsManager(MutableMapping):
