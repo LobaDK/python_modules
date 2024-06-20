@@ -38,3 +38,9 @@ class LoadError(SettingsException):
     """Exception raised when loading settings fails."""
 
     pass
+
+
+class IniFormatError(SettingsException):
+    """Exception raised when an ini file is not formatted correctly."""
+
+    pass
