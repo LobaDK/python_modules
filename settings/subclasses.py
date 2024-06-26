@@ -1,91 +1,140 @@
+from __future__ import annotations
 from collections import UserDict
-from collections.abc import Iterator
-from typing import Any, Callable, Iterable, SupportsIndex, Union, overload
-from copy import deepcopy
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    Iterator,
+    Optional,
+    Union,
+    Protocol,
+    List,
+    SupportsIndex,
+)
+
+
+class ParentProtocol(Protocol):
+    # fmt: off
+    def save(self) -> None:
+        ...
+    # fmt: on
 
 
 class ChangeDetectingDict(UserDict):
-    def __init__(self, state_change_callable: Callable[[Any], None]) -> None:
-        # This should not actually be used, but exists to satisfy IDE's and type checkers. The actual store is the _store property in SettingsManagerBase.
-        self._store: ChangeDetectingDict
-        self._state_change_callable: Callable[[Any], None] = state_change_callable
+    def __init__(
+        self,
+        parent: Optional[ParentProtocol] = None,
+        data: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        self._store: Dict[str, Any] = {}
+        self._parent: Optional[ParentProtocol] = parent
+        self._autosave_enabled: bool = True
+        if data:
+            for key, value in data.items():
+                self._store[key] = self._wrap(value=value)
 
-    def __getitem__(self, key: Any) -> Any:
+    def _wrap(self, value: Any) -> Union[ChangeDetectingDict, ChangeDetectingList, Any]:
+        if isinstance(value, dict):
+            change_detecting_dict = ChangeDetectingDict(parent=self._parent, data=value)
+            change_detecting_dict._set_autosave(state=self._autosave_enabled)
+            return change_detecting_dict
+        elif isinstance(value, list):
+            change_detecting_list = ChangeDetectingList(parent=self._parent, data=value)
+            change_detecting_list._set_autosave(state=self._autosave_enabled)
+            return change_detecting_list
+        return value
+
+    def _set_autosave(self, state: bool) -> None:
+        self._autosave_enabled = state
+        for key in self._store:
+            if isinstance(self._store[key], (ChangeDetectingDict, ChangeDetectingList)):
+                self._store[key]._set_autosave(state=state)
+
+    def __getitem__(self, key: str) -> str:
         return self._store[key]
 
-    def __setitem__(self, key: Any, value: Any) -> None:
+    def __setitem__(self, key: str, value: Any) -> None:
         self._store[key] = self._wrap(value=value)
-        self._state_change_callable(deepcopy(self._store))
+        if self._parent:
+            self._parent.save()
 
-    def __delitem__(self, key: Any) -> None:
+    def __delitem__(self, key: str) -> None:
         del self._store[key]
-        self._state_change_callable(deepcopy(self._store))
+        if self._parent:
+            self._parent.save()
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._store)
+
+    def __len__(self) -> int:
+        return len(self._store)
+
+    def enable_autosave(self) -> None:
+        self._set_autosave(state=True)
+
+    def disable_autosave(self) -> None:
+        self._set_autosave(state=False)
+
+
+class ChangeDetectingList(list):
+    def __init__(
+        self, parent: Optional[ParentProtocol] = None, data: Optional[List] = None
+    ) -> None:
+        self._store: List = []
+        self._parent: Optional[ParentProtocol] = parent
+        self._autosave_enabled: bool = True
+        if data:
+            for item in data:
+                self._store.append(self._wrap(value=item))
+
+    def _wrap(self, value: Any) -> Union[ChangeDetectingDict, ChangeDetectingList, Any]:
+        if isinstance(value, dict):
+            change_detecting_dict = ChangeDetectingDict(parent=self._parent, data=value)
+            change_detecting_dict._set_autosave(state=self._autosave_enabled)
+            return change_detecting_dict
+        elif isinstance(value, list):
+            change_detecting_list = ChangeDetectingList(parent=self._parent, data=value)
+            change_detecting_list._set_autosave(state=self._autosave_enabled)
+            return change_detecting_list
+        return value
+
+    def _set_autosave(self, state: bool) -> None:
+        self._autosave_enabled = state
+        for i in range(len(self._store)):
+            if isinstance(self._store[i], (ChangeDetectingDict, ChangeDetectingList)):
+                self._store[i]._set_autosave(state=state)
+
+    def __getitem__(self, index: Union[int, slice, SupportsIndex]) -> Any:
+        return self._store[index]
+
+    def __setitem__(self, index: Union[int, slice, SupportsIndex], value: Any) -> None:
+        self._store[index] = self._wrap(value=value)
+        if self._parent:
+            self._parent.save()
+
+    def __delitem__(self, index: Union[int, slice, SupportsIndex]) -> None:
+        del self._store[index]
+        if self._parent:
+            self._parent.save()
+
+    def insert(self, index: SupportsIndex, value: Any) -> None:
+        self._store.insert(index, self._wrap(value=value))
+        if self._parent:
+            self._parent.save()
+
+    def append(self, object: Any) -> None:
+        self._store.append(self._wrap(value=object))
+        if self._parent:
+            self._parent.save()
+
+    def extend(self, iterable: Iterable) -> None:
+        for item in iterable:
+            self._store.append(self._wrap(value=item))
+        if self._parent:
+            self._parent.save()
 
     def __iter__(self) -> Iterator:
         return iter(self._store)
 
     def __len__(self) -> int:
         return len(self._store)
-
-    def _wrap(self, value: Any) -> Any:
-        # Rebuild and wrap the value if it is a dictionary or list, including nested dictionaries and lists
-        if isinstance(value, dict):
-            return ChangeDetectingDict(
-                state_change_callable=self._state_change_callable,
-            )
-        elif isinstance(value, list):
-            return ChangeDetectingList(
-                state_change_callable=self._state_change_callable,
-            )
-        return value
-
-
-class ChangeDetectingList(list):
-    def __init__(self, state_change_callable: Callable[[Any], None]) -> None:
-        self.store: ChangeDetectingList
-        self._state_change_callable: Callable[[Any], None] = state_change_callable
-
-    def append(self, value: Any) -> None:
-        self.store.append(self._wrap(value=value))
-        self._state_change_callable(deepcopy(self.store))
-
-    def extend(self, values: Iterable[Any]) -> None:
-        self.store.extend(self._wrap(value=value) for value in values)
-        self._state_change_callable(deepcopy(self.store))
-
-    def insert(self, index: SupportsIndex, value: Any) -> None:
-        self.store.insert(index, self._wrap(value=value))
-        self._state_change_callable(deepcopy(self.store))
-
-    # fmt: off
-    @overload
-    def __setitem__(self, index: SupportsIndex, value: Any) -> None:
-        ...
-    # fmt: on
-
-    # fmt: off
-    @overload
-    def __setitem__(self, index: slice, value: Iterable[Any]) -> None:
-        ...
-    # fmt: on
-
-    def __setitem__(
-        self, index: Union[SupportsIndex, slice], value: Union[Any, Iterable[Any]]
-    ) -> None:
-        self.store[index] = self._wrap(value=value)
-        self._state_change_callable(deepcopy(self.store))
-
-    def __delitem__(self, index: Union[SupportsIndex, slice]) -> None:
-        self.store.__delitem__(index)
-        self._state_change_callable(deepcopy(self.store))
-
-    def _wrap(self, value: Any) -> Any:
-        if isinstance(value, dict):
-            return ChangeDetectingDict(
-                state_change_callable=self._state_change_callable,
-            )
-        elif isinstance(value, list):
-            return ChangeDetectingList(
-                state_change_callable=self._state_change_callable,
-            )
-        return value

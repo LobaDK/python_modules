@@ -42,6 +42,7 @@ from .exceptions import (
     IniFormatError,
 )
 from .subclasses import ChangeDetectingDict
+from .decorators import toggle_autosave_off
 
 
 T = TypeVar("T")
@@ -76,7 +77,7 @@ except ImportError:
 SUPPORTED_FORMATS: list[str] = ["json", "yaml", "toml", "ini"]
 
 
-class SettingsManagerBase(ABC):
+class SettingsManagerBase(ABC, ChangeDetectingDict):
     def __init__(
         self,
         path: Optional[str] = None,
@@ -122,7 +123,7 @@ class SettingsManagerBase(ABC):
         self._auto_sanitize: bool = auto_sanitize
         self._autosave_on_change: bool = autosave_on_change
 
-        self._default_settings: Dict[str, Any] = default_settings
+        self._default_settings: Dict[str, Any] = deepcopy(x=default_settings)
 
         if format:
             if self.logger:
@@ -161,30 +162,33 @@ class SettingsManagerBase(ABC):
                 )
             register(self.save)
 
+        super().__init__(parent=self)
+
+        if self.logger:
+            self.logger.info(msg=f"Auto save on changes? {self._autosave_on_change}.")
+            self.logger.info(msg=f"Sanitize settings? {self._auto_sanitize}.")
+            self.logger.info(
+                msg=f"SettingsManager initialized with format {self._format}!"
+            )
+
+    @toggle_autosave_off
+    def _first_time_load(self) -> None:
         if Path(self._read_path).exists():
             if self.logger:
                 self.logger.info(
                     msg=f"Settings file {self._read_path} exists; loading settings."
                 )
             self.load()
-
         else:
             if self.logger:
                 self.logger.info(
                     msg=f"Settings file {self._read_path} does not exist; applying default settings and saving."
                 )
-            self.load_from_default()
-            self.save()
-
-        if self.logger:
-            self.logger.info(msg=f"Save on change? {self._autosave_on_change}.")
-            self.logger.info(msg=f"Sanitize settings? {self._auto_sanitize}.")
-            self.logger.info(
-                msg=f"SettingsManager initialized with format {self._format}!"
-            )
+            self._store = deepcopy(x=self._default_settings)
+            self.save()  # Save the default settings to the file
 
     @abstractmethod
-    def _convert_to_internal(self, data: Any) -> ChangeDetectingDict:
+    def _convert_to_internal(self, data: Any) -> Dict[str, Any]:
         """
         Converts the data settings to serialized JSON.
 
@@ -199,7 +203,7 @@ class SettingsManagerBase(ABC):
         raise NotImplementedError("Subclasses must implement this method.")
 
     @abstractmethod
-    def _convert_from_internal(self, data: ChangeDetectingDict) -> Any:
+    def _convert_from_internal(self, data: Dict[str, Any]) -> Any:
         """
         Converts the serialized JSON to the data settings.
 
@@ -224,8 +228,9 @@ class SettingsManagerBase(ABC):
         """
         if self._auto_sanitize:
             self.sanitize_settings()
-        settings_data: ChangeDetectingDict = deepcopy(self._internal_data)
-        if not self.valid_ini_format(data=settings_data):
+        if self._format == "ini" and not self.valid_ini_format(
+            data=self._internal_data
+        ):
             if self.logger:
                 self.logger.error(
                     msg="The INI format requires top-level keys to be sections, with settings as nested dictionaries. Please ensure your data follows this structure."
@@ -233,6 +238,9 @@ class SettingsManagerBase(ABC):
             raise IniFormatError(
                 "The INI format requires top-level keys to be sections, with settings as nested dictionaries. Please ensure your data follows this structure."
             )
+        # Reference assignment instead of deep copy to avoid unnecessary copying, since we're not modifying the data, and the scope is local to this method.
+        # We could also entirely avoid this by changing each save method to directly use the internal data, but the flexibility of the current design is nice.
+        settings_data: Dict[str, Any] = self._store
         try:
             with open(file=self._write_path, mode="w") as file:
                 self._write(data=settings_data, file=file)
@@ -241,7 +249,7 @@ class SettingsManagerBase(ABC):
                 self.logger.exception(msg="Error while writing settings to file.")
             raise SaveError("Error while writing settings to file.") from e
 
-    def _write(self, data: ChangeDetectingDict, file: IO) -> None:
+    def _write(self, data: Dict[str, Any], file: IO) -> None:
         """
         Dispatches the write operation to the correct method based on the format attribute.
 
@@ -304,7 +312,7 @@ class SettingsManagerBase(ABC):
                 self.logger.exception(msg="Error while reading settings from file.")
             raise LoadError("Error while reading settings from file.") from e
 
-    def _read(self, file: IO) -> ChangeDetectingDict:
+    def _read(self, file: IO) -> Dict[str, Any]:
         """
         Dispatches the read operation to the correct method based on the format attribute.
 
@@ -377,20 +385,6 @@ class SettingsManagerBase(ABC):
                 f"Trying to determine format from file extension, got {self._read_path} but only {', '.join(SUPPORTED_FORMATS)} are supported."
             )
 
-    def load_from_default(self) -> None:
-        """
-        Loads the default settings into the settings manager.
-
-        This method sets the internal data of the settings manager to the default settings. autosave_on_change is not triggered by this method.
-
-        Parameters:
-            None
-
-        Returns:
-            None
-        """
-        self._internal_data = deepcopy(x=self._default_settings)
-
     def sanitize_settings(self) -> None:
         """
         Sanitizes the settings data by applying the default settings and
@@ -411,7 +405,7 @@ class SettingsManagerBase(ABC):
                 self.logger.exception(msg="Error while sanitizing settings.")
             raise e
 
-    def _sanitize_settings(self):
+    def _sanitize_settings(self) -> None:
         """
         The actual sanitization logic. Any keys in the data that are not in the default settings are removed, and any missing keys from the default settings are added with their default values.
 
@@ -426,7 +420,7 @@ class SettingsManagerBase(ABC):
             Dict[str, Any]: The sanitized settings data.
         """
         try:
-            keys_to_remove = [
+            keys_to_remove: list[str] = [
                 key for key in self._internal_data if key not in self._default_settings
             ]
             for key in keys_to_remove:
@@ -440,7 +434,7 @@ class SettingsManagerBase(ABC):
             raise SanitizationError("Error while sanitizing settings.") from e
 
     @staticmethod
-    def valid_ini_format(data: ChangeDetectingDict) -> bool:
+    def valid_ini_format(data: Dict[str, Any]) -> bool:
         """
         Checks if all top-level keys have nested dictionaries as values.
 
@@ -454,21 +448,6 @@ class SettingsManagerBase(ABC):
             if not isinstance(settings, dict):
                 return False
         return True
-
-    def state_change(self, data: Any) -> None:
-        """
-        Callable method subclasses can use to trigger state changes.
-
-        By default, this method sets or adds the data to the internal data attribute and saves the settings if autosave_on_change is True.
-        Subclasses can override this method to implement custom state change logic.
-
-        Args:
-            data (Any): The data to set or add to the internal data attribute.
-        """
-        self._internal_data = self._convert_to_internal(data=data)
-
-        if self._autosave_on_change:
-            self.save()
 
 
 class SettingsManager(MutableMapping):
