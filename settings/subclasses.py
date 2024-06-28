@@ -13,7 +13,7 @@ from typing import (
 )
 
 
-class ParentProtocol(Protocol):
+class HasSaveMethod(Protocol):
     # fmt: off
     def save(self) -> None:
         ...
@@ -23,11 +23,11 @@ class ParentProtocol(Protocol):
 class ChangeDetectingDict(UserDict):
     def __init__(
         self,
-        parent: Optional[ParentProtocol] = None,
+        parent: Optional[HasSaveMethod] = None,
         data: Optional[Dict[str, Any]] = None,
     ) -> None:
         self._store: Dict[str, Any] = {}
-        self._parent: Optional[ParentProtocol] = parent
+        self._parent: Optional[HasSaveMethod] = parent
         self._autosave_enabled: bool = True
         if data:
             for key, value in data.items():
@@ -50,7 +50,7 @@ class ChangeDetectingDict(UserDict):
             if isinstance(self._store[key], (ChangeDetectingDict, ChangeDetectingList)):
                 self._store[key]._set_autosave(state=state)
 
-    def __getitem__(self, key: str) -> str:
+    def __getitem__(self, key: str) -> Any:
         return self._store[key]
 
     def __setitem__(self, key: str, value: Any) -> None:
@@ -78,10 +78,10 @@ class ChangeDetectingDict(UserDict):
 
 class ChangeDetectingList(list):
     def __init__(
-        self, parent: Optional[ParentProtocol] = None, data: Optional[List] = None
+        self, parent: Optional[HasSaveMethod] = None, data: Optional[List] = None
     ) -> None:
         self._store: List = []
-        self._parent: Optional[ParentProtocol] = parent
+        self._parent: Optional[HasSaveMethod] = parent
         self._autosave_enabled: bool = True
         if data:
             for item in data:

@@ -9,18 +9,19 @@ This module provides a SettingsManager convenience class for handling settings a
 This module is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 """
 
+from __future__ import annotations
 from logging import Logger
 from typing import (
     Dict,
     Optional,
     Any,
-    Iterator,
     TypeVar,
-    Type,
-    Union,
     IO,
     Callable,
-    MutableMapping,
+    List,
+    Tuple,
+    Type,
+    TYPE_CHECKING,
 )
 from pathlib import Path
 from json import load, dump
@@ -43,6 +44,9 @@ from .exceptions import (
 )
 from .subclasses import ChangeDetectingDict
 from .decorators import toggle_autosave_off
+
+if TYPE_CHECKING:
+    from _typeshed import DataclassInstance
 
 
 T = TypeVar("T")
@@ -67,12 +71,6 @@ try:
 except ImportError:
     pass
 
-try:
-    from ..log_helper.log_helper import LogHelper
-
-    logging_available = True
-except ImportError:
-    pass
 
 SUPPORTED_FORMATS: list[str] = ["json", "yaml", "toml", "ini"]
 
@@ -85,7 +83,7 @@ class SettingsManagerBase(ABC, ChangeDetectingDict):
         *,
         read_path: Optional[str] = None,
         write_path: Optional[str] = None,
-        default_settings: Dict[str, Any],
+        default_settings: Any,
         autosave_on_exit: bool = False,
         autosave_on_change: bool = False,
         logger: Optional[Logger] = None,
@@ -109,11 +107,11 @@ class SettingsManagerBase(ABC, ChangeDetectingDict):
             )
 
         if path:
-            self._read_path: str = path
-            self._write_path: str = path
+            self._read_path = Path(path)
+            self._write_path = Path(path)
         elif read_path and write_path:
-            self._read_path = read_path
-            self._write_path = write_path
+            self._read_path = Path(read_path)
+            self._write_path = Path(write_path)
 
         if self.logger:
             self.logger.info(
@@ -123,7 +121,10 @@ class SettingsManagerBase(ABC, ChangeDetectingDict):
         self._auto_sanitize: bool = auto_sanitize
         self._autosave_on_change: bool = autosave_on_change
 
-        self._default_settings: Dict[str, Any] = deepcopy(x=default_settings)
+        self._default_settings_as_dict: Dict[str, Any] = self._to_dict(
+            data=default_settings
+        )
+        self._default_settings: Any = default_settings
 
         if format:
             if self.logger:
@@ -163,6 +164,7 @@ class SettingsManagerBase(ABC, ChangeDetectingDict):
             register(self.save)
 
         super().__init__(parent=self)
+        self._first_time_load()
 
         if self.logger:
             self.logger.info(msg=f"Auto save on changes? {self._autosave_on_change}.")
@@ -171,9 +173,24 @@ class SettingsManagerBase(ABC, ChangeDetectingDict):
                 msg=f"SettingsManager initialized with format {self._format}!"
             )
 
+    @property
+    def settings(self) -> None:
+        pass
+
+    @settings.getter
+    def settings(self) -> Dict[str, Any]:
+        return self._from_dict(data=self._store)
+
+    @settings.setter
+    def settings(self, value: Any) -> None:
+        self._store = self._to_dict(data=value)
+
     @toggle_autosave_off
     def _first_time_load(self) -> None:
-        if Path(self._read_path).exists():
+        """
+        Loads the settings from the file if it exists, otherwise applies default settings and saves them to the file.
+        """
+        if self._read_path.exists():
             if self.logger:
                 self.logger.info(
                     msg=f"Settings file {self._read_path} exists; loading settings."
@@ -184,36 +201,38 @@ class SettingsManagerBase(ABC, ChangeDetectingDict):
                 self.logger.info(
                     msg=f"Settings file {self._read_path} does not exist; applying default settings and saving."
                 )
-            self._store = deepcopy(x=self._default_settings)
+            self._store = deepcopy(x=self._default_settings_as_dict)
             self.save()  # Save the default settings to the file
 
     @abstractmethod
-    def _convert_to_internal(self, data: Any) -> Dict[str, Any]:
+    def _to_dict(self, data: Any) -> Dict[str, Any]:
         """
-        Converts the data settings to serialized JSON.
-
-        Subclasses MUST implement this method, with logic that converts their data to serialized JSON.
+        Converts the given data to a dictionary.
 
         Args:
-            data (Any): The data settings to convert.
+            data (Any): The data to be converted.
 
         Returns:
-            str: The data settings as a string.
+            Dict[str, Any]: The converted dictionary.
+
+        Raises:
+            NotImplementedError: Subclasses must implement this method.
         """
         raise NotImplementedError("Subclasses must implement this method.")
 
     @abstractmethod
-    def _convert_from_internal(self, data: Dict[str, Any]) -> Any:
+    def _from_dict(self, data: Dict[str, Any]) -> Any:
         """
-        Converts the serialized JSON to the data settings.
-
-        Subclasses MUST implement this method, with logic that converts serialized JSON to their data.
+        Converts a dictionary representation of data to the appropriate object.
 
         Args:
-            data (str): The serialized JSON data to convert.
+            data (Dict[str, Any]): The dictionary containing the data to be converted.
 
         Returns:
-            Any: The data settings.
+            Any: The converted object.
+
+        Raises:
+            NotImplementedError: Subclasses must implement this method.
         """
         raise NotImplementedError("Subclasses must implement this method.")
 
@@ -228,9 +247,7 @@ class SettingsManagerBase(ABC, ChangeDetectingDict):
         """
         if self._auto_sanitize:
             self.sanitize_settings()
-        if self._format == "ini" and not self.valid_ini_format(
-            data=self._internal_data
-        ):
+        if self._format == "ini" and not self.valid_ini_format(data=self._store):
             if self.logger:
                 self.logger.error(
                     msg="The INI format requires top-level keys to be sections, with settings as nested dictionaries. Please ensure your data follows this structure."
@@ -304,7 +321,7 @@ class SettingsManagerBase(ABC, ChangeDetectingDict):
         """
         try:
             with open(file=self._read_path, mode="r") as f:
-                self._internal_data = self._read(file=f)
+                self._store: Dict[str, Any] = self._read(file=f)
                 if self._auto_sanitize:
                     self.sanitize_settings()
         except IOError as e:
@@ -367,7 +384,7 @@ class SettingsManagerBase(ABC, ChangeDetectingDict):
             UnsupportedFormatError: If the file extensions of the read and write paths are different and no format is specified.
             UnsupportedFormatError: If the file extension of the read path is not supported.
         """
-        if Path(self._read_path).suffix != Path(self._write_path).suffix:
+        if self._read_path.suffix != self._write_path.suffix:
             raise UnsupportedFormatError(
                 "Read and write paths must have the same file extension when not specifying a format."
             )
@@ -378,8 +395,8 @@ class SettingsManagerBase(ABC, ChangeDetectingDict):
             ".toml": "toml",
             ".ini": "ini",
         }
-        if Path(self._read_path).suffix in extension_to_format:
-            return extension_to_format[Path(self._read_path).suffix]
+        if self._read_path.suffix in extension_to_format:
+            return extension_to_format[self._read_path.suffix]
         else:
             raise UnsupportedFormatError(
                 f"Trying to determine format from file extension, got {self._read_path} but only {', '.join(SUPPORTED_FORMATS)} are supported."
@@ -387,11 +404,9 @@ class SettingsManagerBase(ABC, ChangeDetectingDict):
 
     def sanitize_settings(self) -> None:
         """
-        Sanitizes the settings data by applying the default settings and
-        removing any invalid or unnecessary values.
+        Sanitizes the settings data by applying the default settings and removing any invalid or unnecessary values.
 
-        Returns:
-            Dict[str, Any]: The sanitized settings data.
+        The sanitization process is directly applied to the internal data attribute.
 
         Raises:
             SanitizationError: If an error occurs while sanitizing the settings.
@@ -399,39 +414,79 @@ class SettingsManagerBase(ABC, ChangeDetectingDict):
         """
 
         try:
-            self._sanitize_settings()
+            keys_to_remove, keys_to_add = self._sanitize_settings(
+                settings=self._store,
+                default_settings=self._default_settings_as_dict,
+                dict_path="",
+            )
+
+            for key in keys_to_remove:
+                self._remove_key(key=key)
+
+            for key, value in keys_to_add.items():
+                self._add_key(key=key, value=value)
         except SanitizationError as e:
             if self.logger:
                 self.logger.exception(msg="Error while sanitizing settings.")
             raise e
 
-    def _sanitize_settings(self) -> None:
+    def _sanitize_settings(
+        self, settings: Dict[str, Any], default_settings: Dict[str, Any], dict_path: str
+    ) -> Tuple[List[str], Dict[str, Any]]:
+
+        keys_to_remove: List[str] = []
+        keys_to_add: Dict[str, Any] = {}
+
+        for key in settings:
+            current_path: str = f"{dict_path}.{key}" if dict_path else key
+            if key not in default_settings:
+                keys_to_remove.append(current_path)
+            elif isinstance(settings[key], dict) and isinstance(
+                default_settings[key], dict
+            ):
+                nested_keys_to_remove, nested_keys_to_add = self._sanitize_settings(
+                    settings=settings[key],
+                    default_settings=default_settings[key],
+                    dict_path=current_path,
+                )
+                keys_to_remove.extend(nested_keys_to_remove)
+                keys_to_add.update(nested_keys_to_add)
+            # Add more conditions here if needed, e.g., for lists of dicts
+
+        for key in default_settings:
+            if key not in settings:
+                keys_to_add[f"{dict_path}.{key}" if dict_path else key] = (
+                    default_settings[key]
+                )
+
+        return keys_to_remove, keys_to_add
+
+    def _remove_key(self, key: str) -> None:
         """
-        The actual sanitization logic. Any keys in the data that are not in the default settings are removed, and any missing keys from the default settings are added with their default values.
+        Removes the key from the settings data.
 
         Args:
-            default (Dict[str, Any]): The default settings to use for sanitization.
-            data (Dict[str, Any]): The settings data to sanitize.
-
-        Raises:
-            SanitizationError: If an error occurs while sanitizing the settings.
-
-        Returns:
-            Dict[str, Any]: The sanitized settings data.
+            key (str): The key to remove from the settings data.
         """
-        try:
-            keys_to_remove: list[str] = [
-                key for key in self._internal_data if key not in self._default_settings
-            ]
-            for key in keys_to_remove:
-                del self._internal_data[key]
+        keys: List[str] = key.split(sep=".")
+        current_dict: Dict[str, Any] = self._store
+        for key in keys[:-1]:
+            current_dict = current_dict[key]
+        del current_dict[keys[-1]]
 
-            for key, value in self._default_settings.items():
-                if key not in self._internal_data:
-                    self._internal_data[key] = value
+    def _add_key(self, key: str, value: Any) -> None:
+        """
+        Adds the key with the specified value to the settings data.
 
-        except Exception as e:
-            raise SanitizationError("Error while sanitizing settings.") from e
+        Args:
+            key (str): The key to add to the settings data.
+            value (Any): The value to associate with the key.
+        """
+        keys: List[str] = key.split(sep=".")
+        current_dict: Dict[str, Any] = self._store
+        for key in keys[:-1]:
+            current_dict = current_dict[key]
+        current_dict[keys[-1]] = value
 
     @staticmethod
     def valid_ini_format(data: Dict[str, Any]) -> bool:
@@ -444,378 +499,59 @@ class SettingsManagerBase(ABC, ChangeDetectingDict):
         Returns:
             bool: True if all top-level keys have nested dictionaries as values, False otherwise.
         """
-        for section, settings in data.items():
+        for _, settings in data.items():
             if not isinstance(settings, dict):
                 return False
         return True
 
 
-class SettingsManager(MutableMapping):
-    """
-    A class for managing application settings, supporting various file formats and providing functionality for reading, writing, and sanitizing settings.
+class SettingsManagerAsDict(SettingsManagerBase):
+    def _to_dict(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        return data
 
-    This class acts as a mutable mapping, allowing settings to be accessed and modified like a dictionary. It supports reading from and writing to files in JSON, YAML, TOML, and INI formats, with automatic format detection based on file extension. The class also offers features like saving settings automatically on changes or on application exit, sanitizing settings to match a provided schema of default settings, and optional logging of operations.
+    def _from_dict(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        return data
+
+
+class SettingsManagerAsDataclass(SettingsManagerBase):
+    """
+    A class that manages settings using dataclasses.
+
+    This class provides methods to convert settings objects to dictionaries and vice versa.
 
     Attributes:
-        data (Dict): The settings data stored in the SettingsManager instance. Although accessible, it is recommended to interact with the settings using the dictionary-like interface provided by the class.
+        _default_settings: The default settings object.
 
-    Raises:
-        ValueError: If both `path` and either `read_path` or `write_path` are provided, or if none are provided.
-        ValueError: If `default_settings` is not provided.
-        ValueError: If the specified or detected format is not supported or if required modules for the format are not available.
-        TypeError: If default_settings is neither a dictionary nor a dataclass instance.
+    Methods:
+        _to_dict(data: Any) -> Dict[str, Any]:
+            Converts a settings object to a dictionary.
 
-    Examples:
-        Initializing `SettingsManager` with a JSON file:
-
-        ```python
-        settings_manager = SettingsManager(
-            path="settings.json",
-            default_settings={"theme": "light", "notifications": True},
-            save_on_change=True
-        )
-        ```
-
-        Initializing `SettingsManager` with a JSON file and a dataclass instance:
-        ```python
-        @dataclass
-        class Settings:
-            theme: str = "light"
-            notifications: bool = True
-
-        default_settings = Settings()
-        settings_manager = SettingsManager(
-            path="settings.json",
-            default_settings=default_settings,
-            save_on_change=True
-        )
-        ```
-
-        Reading and updating a setting:
-
-        ```python
-        current_theme = settings_manager["theme"]
-        settings_manager["theme"] = "dark"
-        ```
-
-        Reading and updating a setting using a dataclass instance:
-
-        ```python
-        settings = settings_manager.to_object(Settings)
-        current_theme = settings.theme
-        settings.theme = "dark"
-        ```
-
-        Saving settings manually:
-
-        ```python
-        settings_manager.save()
-        ```
-
-    Note:
-        There is currently no way to save settings set in a dataclass instance back to the settings file. You can convert the settings to a dictionary using the `asdict` function from the `dataclasses` module and set the `data` attribute of the `SettingsManager` instance to the dictionary before saving.
+        _from_dict(data: Dict[str, Any]) -> Any:
+            Converts a dictionary to a settings object.
     """
 
-    def __init__(
-        self,
-        path: Optional[str] = None,
-        /,
-        *,
-        read_path: Optional[str] = None,
-        write_path: Optional[str] = None,
-        default_settings: Union[Dict[str, Any], object],
-        save_on_exit: bool = False,
-        save_on_change: bool = False,
-        use_logger: bool = False,
-        log_file: Optional[str] = None,
-        sanitize: bool = False,
-        format: Optional[str] = None,
-    ) -> None:
+    def _to_dict(self, data: "DataclassInstance") -> Dict[str, Any]:
         """
-        Initialize the SettingsManager object.
+        Converts a settings object to a dictionary.
 
         Args:
-            path (Optional[str], optional): The path and name of the settings file being written to and read from. Defaults to None.
-            read_path (Optional[str], optional): The path and name of the settings file being read from. Defaults to None.
-            write_path (Optional[str], optional): The path and name of settings file being written to. Defaults to None.
-            default_settings (Union[Dict[str, Any], object]): The default settings to use when the settings file does not exist or is missing keys. Can be a dictionary or a dataclass instance.
-            save_on_exit (bool, optional): Whether to save the settings when the program exits. Defaults to False.
-            save_on_change (bool, optional): Whether to save the settings when they are changed. May cause slowdowns if the settings are changed frequently. Try and update the settings in bulk. Defaults to False.
-            use_logger (bool, optional): Whether to use a Logger. If false, only severe errors will be printed using `print()`. Defaults to False.
-            log_file (str, optional): The path and name of the log file. Defaults to None.
-            sanitize (bool, optional): Whether to sanitize and check the settings before reading/writing. Defaults to False.
-            format (Optional[str], optional): The format is automatically guessed from the extension, but this can be used to override it. Defaults to None.
-
-        Raises:
-            ValueError: If both `path` and either `read_path` or `write_path` are provided, or if none are provided.
-            ValueError: If `default_settings` is not provided.
-            ValueError: If the specified or detected format is not supported or if required modules for the format are not available.
-        """
-        if not path and not (read_path or write_path):
-            raise ValueError("You must provide a path or read_path and write_path.")
-        if path and (read_path or write_path):
-            raise ValueError(
-                "You must provide a path or read_path and write_path, not both."
-            )
-        if not default_settings:
-            raise ValueError("You must provide default_settings.")
-        if not logging_available and use_logger:
-            raise ValueError("The log_helper module is not available.")
-        if not use_logger and log_file:
-            raise ValueError("You must enable use_logger to use a log file.")
-
-        if use_logger:
-            self.logger: Logger = LogHelper.create_logger(
-                logger_name="SettingsManager",
-                log_file="settings.log" if not log_file else log_file,
-            )
-
-        if path:
-            self._read_path: str = path
-            self._write_path: str = path
-        elif read_path and write_path:
-            self._read_path = read_path
-            self._write_path = write_path
-
-        self._default_settings: Union[Dict[str, Any], object] = default_settings
-        self._save_on_exit: bool = save_on_exit
-        self._save_on_change: bool = save_on_change
-        self._use_logger: bool = use_logger
-        self._sanitize: bool = sanitize
-
-        self._data: Dict[Any, Any] = {}
-
-        if format:
-            self._format: str = format
-        else:
-            self._format = self._get_format()
-
-        if self._format not in SUPPORTED_FORMATS:
-            self._log_or_print(
-                message=f"User tried to use unsupported format {self._format}."
-            )
-            raise ValueError(
-                f"Format {self._format} is not in the list of supported formats: {', '.join(SUPPORTED_FORMATS)}."
-            )
-
-        if self._format == "yaml" and not yaml_available:
-            self._log_or_print(
-                message="User tried to use yaml format without the yaml module."
-            )
-            raise ValueError("The yaml module is not available.")
-        elif self._format == "toml" and not toml_available:
-            self._log_or_print(
-                message="User tried to use toml format without the toml module."
-            )
-            raise ValueError("The toml module is not available.")
-
-        if save_on_exit:
-            self._log_or_print(
-                message="save_on_exit is enabled; registering save method."
-            )
-            register(self.save)
-
-        if Path(self._read_path).exists():
-            self._log_or_print(
-                message=f"Settings file {self._read_path} exists; loading settings."
-            )
-            self.load()
-        else:
-            self._log_or_print(
-                message=f"Settings file {self._read_path} does not exist; applying default settings and saving."
-            )
-            self.load_from_default()
-            self.save()
-
-        self._log_or_print(
-            message=f"Is save_on_change enabled? {self._save_on_change}."
-        )
-        self._log_or_print(
-            message=f"SettingsManager initialized with format {self._format}."
-        )
-
-    @property
-    def data(self) -> Dict:
-        return self._data
-
-    @data.setter
-    def data(self, value: Dict) -> None:
-        """
-        Set the settings data and optionally save it.
-
-        Args:
-            value (Dict): The settings data to set.
-        """
-        self._data = value
-        if self._save_on_change:
-            self.save()
-
-    def _get_format(self) -> str:
-        """
-        Determines the format of the file based on its extension.
+            data: The settings object to convert.
 
         Returns:
-            str: The format of the file (json, yaml, toml, ini).
-
-        Raises:
-            ValueError: If the file extension is not supported.
+            A dictionary representation of the settings object.
         """
-        if self._read_path.endswith(".json"):
-            return "json"
-        elif self._read_path.endswith(".yaml") or self._read_path.endswith(".yml"):
-            return "yaml"
-        elif self._read_path.endswith(".toml"):
-            return "toml"
-        elif self._read_path.endswith(".ini"):
-            return "ini"
-        else:
-            raise ValueError(
-                f"Trying to determine format from file extension, got {self._read_path} but only {', '.join(SUPPORTED_FORMATS)} are supported."
-            )
+        if is_dataclass(obj=data):
+            return asdict(obj=data)
+        return data
 
-    def load(self) -> None:
+    def _from_dict(self, data: Dict[str, Any]) -> Type[T]:
         """
-        Load the settings from a file.
-
-        The format of the file is determined by the `format` attribute of the `SettingsManager` instance.
-
-        Raises:
-            IOError: If there is an error while reading the settings from the file.
-
-        """
-        if self._format == "json":
-            with open(file=self._read_path, mode="r") as f:
-                self.data = load(fp=f)
-        elif self._format == "yaml":
-            with open(file=self._read_path, mode="r") as f:
-                self.data = safe_load(f)
-        elif self._format == "toml":
-            with open(file=self._read_path, mode="r") as f:
-                self.data = toml_load(f)
-        elif self._format == "ini":
-            config = ConfigParser(allow_no_value=True)
-            config.read(filenames=self._read_path)
-            self.data = {
-                section: dict(config.items(section=section))
-                for section in config.sections()
-            }
-        if self._sanitize:
-            self.sanitize_settings()
-
-    def save(self) -> None:
-        """
-        Save the settings to a file.
-
-        If the `sanitize` flag is set to True, the settings will be sanitized before saving.
-        The format of the file is determined by the `format` attribute of the `SettingsManager` instance.
-
-        Raises:
-            IOError: If there is an error while writing the settings to the file.
-
-        """
-        if self._sanitize:
-            self.sanitize_settings()
-        if self._format == "json":
-            with open(file=self._write_path, mode="w") as file:
-                dump(obj=self.data, fp=file, indent=4)
-        elif self._format == "yaml" and yaml_available:
-            with open(file=self._write_path, mode="w") as file:
-                safe_dump(self.data, file)
-        elif self._format == "toml" and toml_available:
-            with open(file=self._write_path, mode="w") as file:
-                toml_dump(self.data, file)
-        elif self._format == "ini":
-            config = ConfigParser(allow_no_value=True)
-            for section, settings in self.data.items():
-                config[section] = settings
-            with open(file=self._write_path, mode="w") as file:
-                config.write(fp=file)
-
-    def sanitize_settings(self) -> None:
-        """
-        Sanitizes the settings data by removing any keys that are not present in the default settings
-        and adding any missing keys from the default settings with their default values.
-        """
-        _default_settings: Dict
-        if isinstance(self._default_settings, dict):
-            _default_settings = self._default_settings
-        elif is_dataclass(obj=self._default_settings):
-            try:
-                _default_settings = asdict(obj=self._default_settings)  # type: ignore
-            except TypeError as e:
-                raise TypeError(
-                    f"default_settings must be a dict or a dataclass instance, not {type(self._default_settings)}."
-                ) from e
-        keys_to_remove = [key for key in self.data if key not in _default_settings]
-        for key in keys_to_remove:
-            del self.data[key]
-
-        for key, value in _default_settings.items():
-            if key not in self.data:
-                self.data[key] = value
-
-    def _log_or_print(self, message: str, level: str = "info") -> None:
-        if self._use_logger:
-            if level == "info":
-                self.logger.info(msg=message)
-            elif level == "warning":
-                self.logger.warning(msg=message)
-            elif level == "error":
-                self.logger.error(msg=message)
-            elif level == "critical":
-                self.logger.critical(msg=message)
-            elif level == "exception":
-                self.logger.exception(msg=message)
-        elif level == "error" or level == "critical":
-            print(f"{level.upper()} ({__name__}): {message}")
-
-    def to_object(self, data_class: Type[T]) -> T:
-        """
-        Converts the data stored in the settings manager to an object of the specified data class.
+        Converts a dictionary to a settings object.
 
         Args:
-            data_class (Type[T]): The class of the object to convert the data to.
+            data: The dictionary to convert.
 
         Returns:
-            T: An object of the specified data class with the converted data.
+            A settings object created from the dictionary.
         """
-        return from_dict(data_class=data_class, data=self.data)
-
-    def load_from_default(self) -> None:
-        """
-        Loads the default settings into the data attribute.
-
-        If the default_settings attribute is a dictionary, it directly assigns it to the data attribute.
-        If the default_settings attribute is a dataclass instance, it converts it to a dictionary using the asdict function from the dataclasses module.
-
-        Raises:
-            TypeError: If default_settings is neither a dictionary nor a dataclass instance.
-        """
-        if isinstance(self._default_settings, dict):
-            self.data = self._default_settings
-        elif is_dataclass(obj=self._default_settings):
-            try:
-                self.data = asdict(obj=self._default_settings)  # type: ignore
-            except TypeError as e:
-                raise TypeError(
-                    f"default_settings must be a dict or a dataclass instance, not {type(self._default_settings)}."
-                ) from e
-        else:
-            raise TypeError(
-                f"default_settings must be a dict or a dataclass instance, not {type(self._default_settings)}."
-            )
-
-    def __getitem__(self, key) -> Any:
-        return self.data[key]
-
-    def __setitem__(self, key, value) -> None:
-        self.data[key] = value
-
-    def __delitem__(self, key) -> None:
-        del self.data[key]
-
-    def __iter__(self) -> Iterator:
-        return iter(self.data)
-
-    def __len__(self):
-        return len(self.data)
+        return from_dict(data_class=self._default_settings, data=data)
