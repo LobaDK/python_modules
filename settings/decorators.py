@@ -71,7 +71,7 @@ def toggle_autosave_off(func: T) -> T:
 
         func(self, *args, **kwargs)
 
-        if self._autosave_enabled:
+        if not self._autosave_enabled:
             self.enable_autosave()
 
     return cast(T, wrapper)
