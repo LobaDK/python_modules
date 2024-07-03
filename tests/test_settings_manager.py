@@ -1,29 +1,32 @@
 from logging import Logger
 from os import unlink
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import unittest
 
 from log_helper.log_helper import LogHelper
-from settings.settings_manager import SettingsManagerAsDict
+from settings.settings_manager import SettingsManagerAsDict, SettingsManagerAsDataclass
 from settings.exceptions import (
     UnsupportedFormatError,
 )
 
 logger: Logger = LogHelper.create_logger(logger_name=__name__, log_file="./tests.log")
 
-default_settings: dict[str, dict[str, str]] = {"section": {"key": "value"}}
+default_settings_as_dict: dict[str, dict[str, str]] = {"section": {"key": "value"}}
+
+
 formats: list[str] = ["json", "yaml", "toml", "ini"]
 
 
 @dataclass
 class Section:
-    key: str = "value"
+    key: str = field(default="value")
 
 
 @dataclass
-class Settings:
-    section = Section()
+class DefaultSettingsAsDataclass:
+
+    section: Section = field(default_factory=Section)
 
 
 class TestSettingsManager(unittest.TestCase):
@@ -46,7 +49,9 @@ class TestSettingsManager(unittest.TestCase):
         )
         for format in formats:
             settings_manager = SettingsManagerAsDict(
-                f"settings.{format}", default_settings=default_settings, logger=logger
+                f"settings.{format}",
+                default_settings=default_settings_as_dict,
+                logger=logger,
             )
             self.assertEqual(first=settings_manager._get_format(), second=format)
             unlink(path=f"settings.{format}")
@@ -59,11 +64,11 @@ class TestSettingsManager(unittest.TestCase):
         for format in formats:
             settings_path: str = f"settings.{format}"
             settings_manager: SettingsManagerAsDict = SettingsManagerAsDict(
-                settings_path, default_settings=default_settings, logger=logger
+                settings_path, default_settings=default_settings_as_dict, logger=logger
             )
             self.assertEqual(
                 first=settings_manager["section"]["key"],
-                second=default_settings["section"]["key"],
+                second=default_settings_as_dict["section"]["key"],
             )
             unlink(settings_path)
 
@@ -72,7 +77,9 @@ class TestSettingsManager(unittest.TestCase):
         print("Testing if the settings are correctly set...")
         for format in formats:
             settings_manager: SettingsManagerAsDict = SettingsManagerAsDict(
-                f"settings.{format}", default_settings=default_settings, logger=logger
+                f"settings.{format}",
+                default_settings=default_settings_as_dict,
+                logger=logger,
             )
             settings_manager["section"]["new_key"] = "new_value"
             self.assertEqual(
@@ -85,7 +92,9 @@ class TestSettingsManager(unittest.TestCase):
         print("Testing if the settings are correctly deleted...")
         for format in formats:
             settings_manager: SettingsManagerAsDict = SettingsManagerAsDict(
-                f"settings.{format}", default_settings=default_settings, logger=logger
+                f"settings.{format}",
+                default_settings=default_settings_as_dict,
+                logger=logger,
             )
             del settings_manager["section"]["key"]
             self.assertNotIn(member="key", container=settings_manager["section"])
@@ -96,11 +105,15 @@ class TestSettingsManager(unittest.TestCase):
         print("Testing if the settings are correctly saved and loaded...")
         for format in formats:
             settings_manager: SettingsManagerAsDict = SettingsManagerAsDict(
-                f"settings.{format}", default_settings=default_settings, logger=logger
+                f"settings.{format}",
+                default_settings=default_settings_as_dict,
+                logger=logger,
             )
             settings_manager.save()
             settings_manager = SettingsManagerAsDict(
-                f"settings.{format}", default_settings=default_settings, logger=logger
+                f"settings.{format}",
+                default_settings=default_settings_as_dict,
+                logger=logger,
             )
             self.assertEqual(first=settings_manager["section"]["key"], second="value")
             unlink(path=f"settings.{format}")
@@ -111,7 +124,7 @@ class TestSettingsManager(unittest.TestCase):
         for format in formats:
             settings_manager: SettingsManagerAsDict = SettingsManagerAsDict(
                 f"settings.{format}",
-                default_settings=default_settings,
+                default_settings=default_settings_as_dict,
                 logger=logger,
                 autosave_on_change=True,
                 autosave_on_exit=True,
@@ -127,7 +140,7 @@ class TestSettingsManager(unittest.TestCase):
         for format in formats:
             settings_manager: SettingsManagerAsDict = SettingsManagerAsDict(
                 f"settings.{format}",
-                default_settings=default_settings,
+                default_settings=default_settings_as_dict,
                 logger=logger,
                 auto_sanitize=True,
             )
@@ -135,11 +148,28 @@ class TestSettingsManager(unittest.TestCase):
             settings_manager.save()
             settings_manager = SettingsManagerAsDict(
                 f"settings.{format}",
-                default_settings=default_settings,
+                default_settings=default_settings_as_dict,
                 logger=logger,
                 auto_sanitize=True,
             )
             self.assertNotIn(member="new_key", container=settings_manager["section"])
+            unlink(path=f"settings.{format}")
+
+    def test_dataclass(self) -> None:
+        # Test that we can use dataclasses as settings
+        print("Testing if dataclasses can be used as settings...")
+        default_settings: DefaultSettingsAsDataclass = DefaultSettingsAsDataclass()
+        for format in formats:
+            settings_manager: SettingsManagerAsDataclass[DefaultSettingsAsDataclass] = (
+                SettingsManagerAsDataclass(
+                    f"settings.{format}",
+                    default_settings=default_settings,
+                    logger=logger,
+                )
+            )
+            self.assertEqual(
+                first=settings_manager.settings.section.key, second="value"
+            )
             unlink(path=f"settings.{format}")
 
 
