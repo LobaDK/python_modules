@@ -138,3 +138,7 @@ class ChangeDetectingList(list):
 
     def __len__(self) -> int:
         return len(self._store)
+
+
+class ChangeDetectingObject()
+    

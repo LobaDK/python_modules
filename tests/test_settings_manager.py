@@ -6,9 +6,8 @@ import unittest
 
 from log_helper.log_helper import LogHelper
 from settings.settings_manager import SettingsManagerAsDict, SettingsManagerAsDataclass
-from settings.exceptions import (
-    UnsupportedFormatError,
-)
+from settings.exceptions import UnsupportedFormatError
+from settings.decorators import not_persistent
 
 logger: Logger = LogHelper.create_logger(logger_name=__name__, log_file="./tests.log")
 
@@ -27,6 +26,36 @@ class Section:
 class DefaultSettingsAsDataclass:
 
     section: Section = field(default_factory=Section)
+
+
+class PersistentSectionObject:
+    persistent_key: str = "persistent value"
+
+
+@not_persistent
+class SectionObject:
+    key: str = "value"
+
+
+class DefaultSettingsAsObject:
+
+    persistent_section: PersistentSectionObject = PersistentSectionObject()
+    section: SectionObject = SectionObject()
+
+    _x: int = 0
+    _y: int = 0
+
+    @property
+    @not_persistent
+    def x(self) -> int:
+        return self._x
+
+    @property
+    def y(self) -> int:
+        return self._y
+
+
+test = DefaultSettingsAsObject()
 
 
 class TestSettingsManager(unittest.TestCase):
@@ -129,7 +158,7 @@ class TestSettingsManager(unittest.TestCase):
                 autosave_on_change=True,
                 autosave_on_exit=True,
                 auto_sanitize=True,
-                format=format,
+                config_format=format,
             )
             self.assertEqual(first=settings_manager["section"]["key"], second="value")
             unlink(path=f"settings.{format}")

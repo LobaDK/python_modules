@@ -1,4 +1,4 @@
-from typing import Callable, TypeVar, cast, Protocol
+from typing import Callable, TypeVar, cast, Protocol, Union
 from functools import wraps
 
 
@@ -75,3 +75,23 @@ def toggle_autosave_off(func: T) -> T:
             self.enable_autosave()
 
     return cast(T, wrapper)
+
+
+def not_persistent(property_or_class: Callable) -> Union[property, object]:
+
+    @wraps(wrapped=property_or_class)
+    def property_wrapper(prop: property) -> property:
+        setattr(prop, "__non_persistent__", None)
+        return prop
+
+    @wraps(wrapped=property_or_class)
+    def class_wrapper(cls: object) -> object:
+        setattr(cls, "__non_persistent__", None)
+        return cls
+
+    if isinstance(property_or_class, property):
+        return property_wrapper(prop=property_or_class)
+    elif isinstance(property_or_class, object):
+        return class_wrapper(cls=property_or_class)
+    else:
+        raise TypeError(f"Unsupported type: {type(property_or_class)}")

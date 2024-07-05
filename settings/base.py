@@ -10,14 +10,12 @@ from typing import (
     Tuple,
     TypeVar,
     TYPE_CHECKING,
-    Generic,
 )
 from pathlib import Path
 from json import load, dump
 from configparser import ConfigParser
 from atexit import register
 from platform import system, version, architecture, python_version
-from abc import ABC, abstractmethod
 from copy import deepcopy
 
 from .exceptions import (
@@ -29,7 +27,6 @@ from .exceptions import (
     LoadError,
     IniFormatError,
 )
-from .subclasses import ChangeDetectingDict
 from .decorators import toggle_autosave_off
 
 if TYPE_CHECKING:
@@ -61,20 +58,22 @@ except ImportError:
 SUPPORTED_FORMATS: list[str] = ["json", "yaml", "toml", "ini"]
 
 
-class SettingsManagerBase(ABC, ChangeDetectingDict, Generic[T]):
+class SettingsManagerBase:
     def __init__(
         self,
         path: Optional[str] = None,
-        /,
+        autosave: bool = False,
+        auto_sanitize: bool = False,
+        config_format: Optional[str] = None,
+        logger: Optional[Logger] = None,
         *,
+        default_settings: object,
         read_path: Optional[str] = None,
         write_path: Optional[str] = None,
-        default_settings: T,
         autosave_on_exit: bool = False,
         autosave_on_change: bool = False,
-        logger: Optional[Logger] = None,
-        auto_sanitize: bool = False,
-        format: Optional[str] = None,
+        auto_sanitize_on_load: bool = False,
+        auto_sanitize_on_save: bool = False,
     ) -> None:
         if not path and not (read_path or write_path):
             raise InvalidPathError(
@@ -99,23 +98,25 @@ class SettingsManagerBase(ABC, ChangeDetectingDict, Generic[T]):
             self._read_path = Path(read_path)
             self._write_path = Path(write_path)
 
+        if autosave:
+            autosave_on_exit = True
+            autosave_on_change = True
+
+        if auto_sanitize:
+            auto_sanitize_on_load = True
+            auto_sanitize_on_save = True
+
         if self.logger:
             self.logger.info(
                 msg=f"Read path: {self._read_path}. Write path: {self._write_path}."
             )
 
-        self._auto_sanitize: bool = auto_sanitize
-        self._autosave_on_change: bool = autosave_on_change
+        self.settings: object
 
-        self._default_settings_as_dict: Dict[str, Any] = self._to_dict(
-            data=default_settings
-        )
-        self._default_settings: T = default_settings
-
-        if format:
+        if config_format:
             if self.logger:
-                self.logger.info(msg=f"User specified format: {format}.")
-            self._format: str = format
+                self.logger.info(msg=f"User specified format: {config_format}.")
+            self._format: str = config_format
         else:
             self._format = self._get_format()
             if self.logger:
@@ -149,23 +150,24 @@ class SettingsManagerBase(ABC, ChangeDetectingDict, Generic[T]):
                 )
             register(self.save)
 
-        super().__init__(parent=self)
         self._first_time_load()
+
+        self._autosave_on_change: bool = autosave_on_change
+        self._auto_sanitize_on_load: bool = auto_sanitize_on_load
+        self._auto_sanitize_on_save: bool = auto_sanitize_on_save
+        self._default_settings: object = default_settings
 
         if self.logger:
             self.logger.info(msg=f"Auto save on changes? {self._autosave_on_change}.")
-            self.logger.info(msg=f"Sanitize settings? {self._auto_sanitize}.")
+            self.logger.info(
+                msg=f"Sanitize settings on load? {self._auto_sanitize_on_load}."
+            )
+            self.logger.info(
+                msg=f"Sanitize settings on save? {self._auto_sanitize_on_save}."
+            )
             self.logger.info(
                 msg=f"SettingsManager initialized with format {self._format}!"
             )
-
-    @property
-    def settings(self) -> T:
-        return self._from_dict(data=self._store)
-
-    @settings.setter
-    def settings(self, value: T) -> None:
-        self._store = self._to_dict(data=value)
 
     @toggle_autosave_off
     def _first_time_load(self) -> None:
@@ -185,38 +187,6 @@ class SettingsManagerBase(ABC, ChangeDetectingDict, Generic[T]):
                 )
             self._store = deepcopy(x=self._default_settings_as_dict)
             self.save()  # Save the default settings to the file
-
-    @abstractmethod
-    def _to_dict(self, data: Optional[T] = None) -> Dict[str, Any]:
-        """
-        Converts the given data or the internal data to a dictionary.
-
-        Args:
-            data (Optional[Any]): The data to convert to a dictionary. Defaults to None.
-
-        Returns:
-            Dict[str, Any]: The converted dictionary.
-
-        Raises:
-            NotImplementedError: Subclasses must implement this method.
-        """
-        raise NotImplementedError("Subclasses must implement this method.")
-
-    @abstractmethod
-    def _from_dict(self, data: Optional[Dict[str, Any]] = None) -> T:
-        """
-        Converts a dictionary representation of data or the internal data to the object it represents.
-
-        Args:
-            data (Dict[str, Any]): The dictionary containing the data to be converted.
-
-        Returns:
-            Any: The converted object.
-
-        Raises:
-            NotImplementedError: Subclasses must implement this method.
-        """
-        raise NotImplementedError("Subclasses must implement this method.")
 
     def save(self) -> None:
         """
@@ -259,15 +229,17 @@ class SettingsManagerBase(ABC, ChangeDetectingDict, Generic[T]):
         Raises:
             UnsupportedFormatError: If the format is not in the list of supported formats.
         """
-        format_to_function: Dict[str, Callable] = {
+        format_to_function: Dict[str, Callable[[Dict[str, Any], IO], None]] = {
             "json": self._write_as_json,
             "yaml": self._write_as_yaml,
             "toml": self._write_as_toml,
             "ini": self._write_as_ini,
         }
         if self._format in format_to_function:
-            write_function: Callable = format_to_function[self._format]
-            write_function(data=data, file=file)
+            write_function: Callable[[Dict[str, Any], IO], None] = format_to_function[
+                self._format
+            ]
+            write_function(data, file)
         else:
             if self.logger:
                 self.logger.error(
@@ -324,15 +296,17 @@ class SettingsManagerBase(ABC, ChangeDetectingDict, Generic[T]):
         Raises:
             UnsupportedFormatError: If the format is not in the list of supported formats.
         """
-        format_to_function: Dict[str, Callable] = {
+        format_to_function: Dict[str, Callable[[IO], Dict[str, Any]]] = {
             "json": self._read_as_json,
             "yaml": self._read_as_yaml,
             "toml": self._read_as_toml,
             "ini": self._read_as_ini,
         }
         if self._format in format_to_function:
-            read_function: Callable = format_to_function[self._format]
-            return read_function(file=file)
+            read_function: Callable[[IO], Dict[str, Any]] = format_to_function[
+                self._format
+            ]
+            return read_function(file)
         else:
             raise UnsupportedFormatError(
                 f"Format {self._format} is not in the list of supported formats: {', '.join(SUPPORTED_FORMATS)}."

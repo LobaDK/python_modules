@@ -1,11 +1,5 @@
 from __future__ import annotations
-from typing import (
-    Dict,
-    Optional,
-    Any,
-    TypeVar,
-    TYPE_CHECKING,
-)
+from typing import Dict, Optional, Any, TypeVar, TYPE_CHECKING
 from dacite import from_dict
 from dataclasses import asdict
 
@@ -74,3 +68,23 @@ class SettingsManagerAsDataclass(SettingsManagerBase[T]):
         if data:
             return from_dict(data_class=self._default_settings.__class__, data=data)
         return from_dict(data_class=self._default_settings.__class__, data=self._store)
+
+
+class SettingsManagerAsObject(SettingsManagerBase):
+    def _to_dict(self, data: Optional[object] = None) -> Dict[str, Any]:
+        if data:
+            return data.__dict__
+        return self._store
+
+    def _from_dict(self, data: Optional[Dict[str, Any]] = None) -> object:
+        if data:
+            return object.__new__(self._default_settings.__class__, **data)
+        return object.__new__(self._default_settings.__class__, **self._store)
+
+    def strip_non_persistent_settings(self, data: object) -> object:
+        return self._recursively_strip_non_persistent_settings(obj=data)
+
+    def _recursively_strip_non_persistent_settings(self, obj: object) -> object:
+        if not isinstance(obj, (int, float, str, bool, list, tuple, dict)):
+            for attr in dir(obj):
+                pass
