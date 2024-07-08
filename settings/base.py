@@ -9,7 +9,7 @@ from typing import (
     List,
     Tuple,
     TypeVar,
-    TYPE_CHECKING,
+    Generic,
 )
 from pathlib import Path
 from json import load, dump
@@ -28,11 +28,10 @@ from .exceptions import (
     IniFormatError,
 )
 from .decorators import toggle_autosave_off
+from .subclasses import DotDict
 
-if TYPE_CHECKING:
-    from _typeshed import DataclassInstance
 
-T = TypeVar("T", bound="DataclassInstance")
+T = TypeVar("T")
 
 # Initialize flags indicating the availability of optional modules
 yaml_available = False
@@ -58,7 +57,7 @@ except ImportError:
 SUPPORTED_FORMATS: list[str] = ["json", "yaml", "toml", "ini"]
 
 
-class SettingsManagerBase:
+class SettingsManagerBase(DotDict, Generic[T]):
     def __init__(
         self,
         path: Optional[str] = None,
@@ -110,8 +109,6 @@ class SettingsManagerBase:
             self.logger.info(
                 msg=f"Read path: {self._read_path}. Write path: {self._write_path}."
             )
-
-        self.settings: object
 
         if config_format:
             if self.logger:
@@ -459,3 +456,11 @@ class SettingsManagerBase:
             if not isinstance(settings, dict):
                 return False
         return True
+
+
+settings = SettingsManagerBase(
+    path="settings.json",
+    autosave=True,
+    auto_sanitize=True,
+    default_settings={"key": "value"},
+)
