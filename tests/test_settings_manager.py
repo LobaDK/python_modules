@@ -1,61 +1,32 @@
 from logging import Logger
 from os import unlink
 from pathlib import Path
-from dataclasses import dataclass, field
 import unittest
 
 from log_helper.log_helper import LogHelper
-from settings.settings_manager import SettingsManagerAsDict, SettingsManagerAsDataclass
-from settings.exceptions import UnsupportedFormatError
-from settings.decorators import not_persistent
+from settings.base import SettingsManagerBase
 
 logger: Logger = LogHelper.create_logger(logger_name=__name__, log_file="./tests.log")
 
-default_settings_as_dict: dict[str, dict[str, str]] = {"section": {"key": "value"}}
-
-
 formats: list[str] = ["json", "yaml", "toml", "ini"]
 
+default_settings_as_dict: dict[str, dict[str, str]] = {"section": {"key": "value"}}
+default_settings_as_list: list[str] = ["value1", "value2", "value3"]
+default_settings_as_set: set[str] = {"value1", "value2", "value3"}
+default_settings_as_tuple: tuple[str, str, str] = ("value1", "value2", "value3")
 
-@dataclass
+
 class Section:
-    key: str = field(default="value")
+    def __init__(self) -> None:
+        self.key: str = "value"
 
 
-@dataclass
-class DefaultSettingsAsDataclass:
-
-    section: Section = field(default_factory=Section)
-
-
-class PersistentSectionObject:
-    persistent_key: str = "persistent value"
+class DefaultSettingsAsClass:
+    def __init__(self) -> None:
+        self.section: Section = Section()
 
 
-@not_persistent
-class SectionObject:
-    key: str = "value"
-
-
-class DefaultSettingsAsObject:
-
-    persistent_section: PersistentSectionObject = PersistentSectionObject()
-    section: SectionObject = SectionObject()
-
-    _x: int = 0
-    _y: int = 0
-
-    @property
-    @not_persistent
-    def x(self) -> int:
-        return self._x
-
-    @property
-    def y(self) -> int:
-        return self._y
-
-
-test = DefaultSettingsAsObject()
+default_settings_as_class: DefaultSettingsAsClass = DefaultSettingsAsClass()
 
 
 class TestSettingsManager(unittest.TestCase):
@@ -151,16 +122,15 @@ class TestSettingsManager(unittest.TestCase):
         # Test that we can set all the parameters of the settings manager
         print("Testing if all parameters are correctly set...")
         for format in formats:
-            settings_manager: SettingsManagerAsDict = SettingsManagerAsDict(
-                f"settings.{format}",
-                default_settings=default_settings_as_dict,
+            settings_manager: SettingsManagerBase = SettingsManagerBase(
+                path=f"settings.{format}",
+                default_settings=default_settings_as_class.__dict__,
                 logger=logger,
-                autosave_on_change=True,
-                autosave_on_exit=True,
+                autosave=True,
                 auto_sanitize=True,
                 config_format=format,
             )
-            self.assertEqual(first=settings_manager["section"]["key"], second="value")
+            self.assertEqual(first=settings_manager.settings, second="value")
             unlink(path=f"settings.{format}")
 
     def test_sanitize_settings(self) -> None:
@@ -182,23 +152,6 @@ class TestSettingsManager(unittest.TestCase):
                 auto_sanitize=True,
             )
             self.assertNotIn(member="new_key", container=settings_manager["section"])
-            unlink(path=f"settings.{format}")
-
-    def test_dataclass(self) -> None:
-        # Test that we can use dataclasses as settings
-        print("Testing if dataclasses can be used as settings...")
-        default_settings: DefaultSettingsAsDataclass = DefaultSettingsAsDataclass()
-        for format in formats:
-            settings_manager: SettingsManagerAsDataclass[DefaultSettingsAsDataclass] = (
-                SettingsManagerAsDataclass(
-                    f"settings.{format}",
-                    default_settings=default_settings,
-                    logger=logger,
-                )
-            )
-            self.assertEqual(
-                first=settings_manager.settings.section.key, second="value"
-            )
             unlink(path=f"settings.{format}")
 
 

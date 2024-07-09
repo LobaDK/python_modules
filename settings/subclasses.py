@@ -27,6 +27,13 @@ class BaseWrapper:
     def callbacks(self) -> List[Callable[[], Any]]:
         return self._callbacks
 
+    @callbacks.setter
+    def callbacks(self, value: List[Callable[[], Any]]) -> None:
+        self._callbacks = value
+        for obj in self._data.values():
+            if isinstance(obj, BaseWrapper):
+                obj.callbacks = value
+
     def _notify(self) -> None:
         if self._callbacks:
             for callback in self._callbacks:
@@ -182,18 +189,99 @@ class TupleWrapper(BaseWrapper, tuple):
 
 
 class DotDict(DictWrapper):
+    """
+    A dictionary-like object that supports dot notation for accessing and modifying values.
+
+    DotDict is a subclass of DictWrapper and provides additional functionality for adding and removing callback functions that are called when the data is modified.
+
+    Example usage:
+    ```python
+    >>> data = DotDict()
+    >>> data.key = "value"
+    >>> print(data.key)
+    value
+
+    ```
+
+    Attributes:
+        callbacks (List[Callable[[], Any]]): A list of callback functions to be called when the data is modified.
+        _data (Dict[str, Any]): The underlying dictionary that stores the data.
+
+    Methods:
+        add_callback(callback: Callable[[], Any]) -> None:
+            Adds a callback function to the list of callbacks that should be called when the data is modified.
+
+        remove_callback(callback: Callable[[], Any]) -> None:
+            Removes a callback function from the list of callbacks that should be called when the data is modified.
+
+        to_dict() -> Dict[str, Any]:
+            Returns a dictionary representation of the DotDict object.
+    """
+
     def __init__(self, *args, **kwargs) -> None:
         initial_data = dict(*args, **kwargs)
         super().__init__(data=initial_data, callbacks=[])
 
     def add_callback(self, callback: Callable[[], Any]) -> None:
+        """
+        Adds a callback function to the list of callbacks that should be called when the data is modified.
+
+        Callbacks are called in the order they were added. The callback function should not take any arguments. Any return value is ignored.
+        The callbacks list can be accessed and modified directly by accessing the `callbacks` property. Modifications to the callables list will propagate to all nested supported data structures.
+
+        Example usage:
+        ```python
+        >>> def custom_callback():
+        ...    print("Data was modified")
+        ...
+        >>> data = DotDict()
+        >>> data.add_callback(callback=custom_callback)
+        ...
+        >>> data.key = "value"
+        Data was modified
+
+        ```
+
+        Args:
+            callback (Callable[[], Any]): The callback function to be added.
+
+        Returns:
+            None
+        """
         self._callbacks.append(callback)
         for value in self._data.values():
             if isinstance(value, BaseWrapper):
                 value.add_callback(callback=callback)
 
     def remove_callback(self, callback: Callable[[], Any]) -> None:
-        self._callbacks.remove(callback)
+        """
+        Removes a callback function from the list of callbacks that should be called when the data is modified.
+
+        The callback function should be in the list of callbacks. If the callback is not found, ValueError is raised. Modifications to the callables list will propagate to all nested supported data structures.
+
+        Example usage:
+        ```python
+        >>> def custom_callback():
+        ...    print("Data was modified")
+        ...
+        >>> data = DotDict()
+        >>> data.add_callback(callback=custom_callback)
+        ...
+        >>> data.remove_callback(callback=custom_callback)
+        ...
+        >>> data.key = "value"
+
+        ```
+        Args:
+            callback (Callable[[], Any]): The callback function to be removed.
+
+        Returns:
+            None
+        """
+        try:
+            self._callbacks.remove(callback)
+        except ValueError:
+            raise ValueError(f"Callback {callback} not found in list of callbacks.")
         for value in self._data.values():
             if isinstance(value, BaseWrapper):
                 value.remove_callback(callback=callback)

@@ -8,8 +8,6 @@ from typing import (
     Callable,
     List,
     Tuple,
-    TypeVar,
-    Generic,
 )
 from pathlib import Path
 from json import load, dump
@@ -17,6 +15,7 @@ from configparser import ConfigParser
 from atexit import register
 from platform import system, version, architecture, python_version
 from copy import deepcopy
+from time import perf_counter
 
 from .exceptions import (
     InvalidPathError,
@@ -27,16 +26,12 @@ from .exceptions import (
     LoadError,
     IniFormatError,
 )
-from .decorators import toggle_autosave_off
 from .subclasses import DotDict
 
-
-T = TypeVar("T")
 
 # Initialize flags indicating the availability of optional modules
 yaml_available = False
 toml_available = False
-logging_available = False
 
 # Attempt to import optional modules and set flags accordingly
 try:
@@ -57,7 +52,7 @@ except ImportError:
 SUPPORTED_FORMATS: list[str] = ["json", "yaml", "toml", "ini"]
 
 
-class SettingsManagerBase(DotDict, Generic[T]):
+class SettingsManagerBase:
     def __init__(
         self,
         path: Optional[str] = None,
@@ -66,7 +61,7 @@ class SettingsManagerBase(DotDict, Generic[T]):
         config_format: Optional[str] = None,
         logger: Optional[Logger] = None,
         *,
-        default_settings: object,
+        default_settings: Dict[str, Any],
         read_path: Optional[str] = None,
         write_path: Optional[str] = None,
         autosave_on_exit: bool = False,
@@ -140,6 +135,21 @@ class SettingsManagerBase(DotDict, Generic[T]):
                 self.logger.error(msg="The toml module is not available.")
             raise MissingDependencyError("The toml module is not available.")
 
+        self._default_settings: Dict[str, Any] = deepcopy(x=default_settings)
+        self._auto_sanitize_on_load: bool = auto_sanitize_on_load
+        self._auto_sanitize_on_save: bool = auto_sanitize_on_save
+
+        if self.logger:
+            self.logger.info(msg="Initializing settings data.")
+            start: float = perf_counter()
+            self._first_time_load()
+            end: float = perf_counter()
+            self.logger.info(
+                msg=f"Settings data initialized in {end - start:.6f} seconds."
+            )
+        else:
+            self._first_time_load()
+
         if autosave_on_exit:
             if self.logger:
                 self.logger.info(
@@ -147,15 +157,14 @@ class SettingsManagerBase(DotDict, Generic[T]):
                 )
             register(self.save)
 
-        self._first_time_load()
-
-        self._autosave_on_change: bool = autosave_on_change
-        self._auto_sanitize_on_load: bool = auto_sanitize_on_load
-        self._auto_sanitize_on_save: bool = auto_sanitize_on_save
-        self._default_settings: object = default_settings
+        if autosave_on_change:
+            if self.logger:
+                self.logger.info(
+                    msg="autosave_on_change is enabled; adding save method to callbacks."
+                )
+            self.settings.add_callback(callback=self.save)
 
         if self.logger:
-            self.logger.info(msg=f"Auto save on changes? {self._autosave_on_change}.")
             self.logger.info(
                 msg=f"Sanitize settings on load? {self._auto_sanitize_on_load}."
             )
@@ -166,7 +175,6 @@ class SettingsManagerBase(DotDict, Generic[T]):
                 msg=f"SettingsManager initialized with format {self._format}!"
             )
 
-    @toggle_autosave_off
     def _first_time_load(self) -> None:
         """
         Loads the settings from the file if it exists, otherwise applies default settings and saves them to the file.
@@ -182,7 +190,7 @@ class SettingsManagerBase(DotDict, Generic[T]):
                 self.logger.info(
                     msg=f"Settings file {self._read_path} does not exist; applying default settings and saving."
                 )
-            self._store = deepcopy(x=self._default_settings_as_dict)
+            self.settings = DotDict(deepcopy(x=self._default_settings))
             self.save()  # Save the default settings to the file
 
     def save(self) -> None:
@@ -194,9 +202,11 @@ class SettingsManagerBase(DotDict, Generic[T]):
         Raises:
             SaveError: If there is an error while writing the settings to the file.
         """
-        if self._auto_sanitize:
+        if self._auto_sanitize_on_save:
             self.sanitize_settings()
-        if self._format == "ini" and not self.valid_ini_format(data=self._store):
+        if self._format == "ini" and not self.valid_ini_format(
+            data=self.settings._data
+        ):
             if self.logger:
                 self.logger.error(
                     msg="The INI format requires top-level keys to be sections, with settings as nested dictionaries. Please ensure your data follows this structure."
@@ -206,7 +216,7 @@ class SettingsManagerBase(DotDict, Generic[T]):
             )
         # Reference assignment instead of deep copy to avoid unnecessary copying, since we're not modifying the data, and the scope is local to this method.
         # We could also entirely avoid this by changing each save method to directly use the internal data, but the flexibility of the current design is nice.
-        settings_data: Dict[str, Any] = self._store
+        settings_data: Dict[str, Any] = self.settings._data
         try:
             with open(file=self._write_path, mode="w") as file:
                 self._write(data=settings_data, file=file)
@@ -272,8 +282,8 @@ class SettingsManagerBase(DotDict, Generic[T]):
         """
         try:
             with open(file=self._read_path, mode="r") as f:
-                self._store: Dict[str, Any] = self._read(file=f)
-                if self._auto_sanitize:
+                self.settings._data = self._read(file=f)
+                if self._auto_sanitize_on_load:
                     self.sanitize_settings()
         except IOError as e:
             if self.logger:
@@ -368,8 +378,8 @@ class SettingsManagerBase(DotDict, Generic[T]):
 
         try:
             keys_to_remove, keys_to_add = self._sanitize_settings(
-                settings=self._store,
-                default_settings=self._default_settings_as_dict,
+                settings=self.settings._data,
+                default_settings=self._default_settings,
                 dict_path="",
             )
 
@@ -394,8 +404,8 @@ class SettingsManagerBase(DotDict, Generic[T]):
             current_path: str = f"{dict_path}.{key}" if dict_path else key
             if key not in default_settings:
                 keys_to_remove.append(current_path)
-            elif isinstance(settings[key], dict) and isinstance(
-                default_settings[key], dict
+            elif isinstance(settings[key], DotDict) and isinstance(
+                default_settings[key], DotDict
             ):
                 nested_keys_to_remove, nested_keys_to_add = self._sanitize_settings(
                     settings=settings[key],
@@ -422,7 +432,7 @@ class SettingsManagerBase(DotDict, Generic[T]):
             key (str): The key to remove from the settings data.
         """
         keys: List[str] = key.split(sep=".")
-        current_dict: Dict[str, Any] = self._store
+        current_dict: Dict[str, Any] = self.settings._data
         for key in keys[:-1]:
             current_dict = current_dict[key]
         del current_dict[keys[-1]]
@@ -436,7 +446,7 @@ class SettingsManagerBase(DotDict, Generic[T]):
             value (Any): The value to associate with the key.
         """
         keys: List[str] = key.split(sep=".")
-        current_dict: Dict[str, Any] = self._store
+        current_dict: Dict[str, Any] = self.settings._data
         for key in keys[:-1]:
             current_dict = current_dict[key]
         current_dict[keys[-1]] = value
@@ -456,11 +466,3 @@ class SettingsManagerBase(DotDict, Generic[T]):
             if not isinstance(settings, dict):
                 return False
         return True
-
-
-settings = SettingsManagerBase(
-    path="settings.json",
-    autosave=True,
-    auto_sanitize=True,
-    default_settings={"key": "value"},
-)
