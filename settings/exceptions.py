@@ -10,6 +10,18 @@ class InvalidPathError(SettingsException):
     pass
 
 
+class MissingPathError(InvalidPathError):
+    """Exception raised when a path is missing."""
+
+    pass
+
+
+class TooManyPathsError(InvalidPathError):
+    """Exception raised when too many paths are provided."""
+
+    pass
+
+
 class UnsupportedFormatError(SettingsException):
     """Exception raised when an unsupported settings file format is specified."""
 
@@ -18,6 +30,18 @@ class UnsupportedFormatError(SettingsException):
 
 class MissingDependencyError(SettingsException):
     """Exception raised when a required dependency for a settings format is missing."""
+
+    pass
+
+
+class TOMLNotInstalledError(MissingDependencyError):
+    """Exception raised when the TOML module is not installed."""
+
+    pass
+
+
+class YAMLNotInstalledError(MissingDependencyError):
+    """Exception raised when the PyYAML module is not installed."""
 
     pass
 
