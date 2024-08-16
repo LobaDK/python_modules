@@ -27,7 +27,13 @@ from settings.exceptions import (
     LoadError,
     IniFormatError,
 )
-from settings.utils import set_file_paths, set_format, composite_toggle, filter_locals
+from settings.utils import (
+    set_file_paths,
+    set_format,
+    composite_toggle,
+    filter_locals,
+    get_caller_name,
+)
 
 
 T = TypeVar("T")
@@ -101,11 +107,11 @@ class SettingsManagerBase(ABC, Generic[T]):
         self._auto_sanitize_on_load: bool = auto_sanitize_on_load
         self._auto_sanitize_on_save: bool = auto_sanitize_on_save
 
-        logger.debug(msg="Initializing settings data.")
+        logger.info(msg="Initializing settings data.")
         start: float = perf_counter()
         self._first_time_load()
         end: float = perf_counter()
-        logger.debug(msg=f"Settings data initialized in {end - start:.6f} seconds.")
+        logger.info(msg=f"Settings data initialized in {end - start:.6f} seconds.")
 
         if autosave_on_exit:
             logger.debug(msg="autosave_on_exit is enabled; registering save method.")
@@ -129,13 +135,13 @@ class SettingsManagerBase(ABC, Generic[T]):
         Loads the settings from the file if it exists, otherwise applies default settings and saves them to the file.
         """
         if self._read_path.exists():
-            logger.debug(
-                msg=f"Settings file {self._read_path} exists; loading settings."
+            logger.info(
+                msg=f"Found settings file {self._read_path}; loading settings from file."
             )
             self.load()
         else:
-            logger.debug(
-                msg=f"Settings file {self._read_path} does not exist; applying default settings and saving."
+            logger.info(
+                msg=f"Could not find settings file {self._read_path}; applying default settings and saving to new file."
             )
             self.settings = deepcopy(x=self._default_settings)
             self.save()  # Save the default settings to the file
@@ -149,6 +155,7 @@ class SettingsManagerBase(ABC, Generic[T]):
         Raises:
             SaveError: If there is an error while writing the settings to the file.
         """
+        logger.debug(msg=f"Save requested by {get_caller_name()}...")
         settings_data: Dict[str, Any] = self._to_dict(obj=self.settings)
         if self._auto_sanitize_on_save:
             self.sanitize_settings()
@@ -162,6 +169,7 @@ class SettingsManagerBase(ABC, Generic[T]):
         try:
             with open(file=self._write_path, mode="w") as file:
                 self._write(data=settings_data, file=file)
+            logger.debug(msg=f"Settings saved to {self._write_path}.")
         except IOError as e:
             logger.exception(msg="Error while writing settings to file.")
             raise SaveError("Error while writing settings to file.") from e
@@ -201,6 +209,9 @@ class SettingsManagerBase(ABC, Generic[T]):
         write_function: Callable[[Dict[str, Any], IO], None] = format_to_function[
             self._format
         ]
+        logger.debug(
+            msg=f"Format is {self._format}, dispatching write operation to {write_function.__name__}."
+        )
         write_function(data, file)
 
     def _write_as_json(self, data: Dict[str, Any], file: IO) -> None:
@@ -227,11 +238,13 @@ class SettingsManagerBase(ABC, Generic[T]):
         Raises:
             LoadError: If there is an error while reading the settings from the file.
         """
+        logger.debug(msg=f"Load requested by {get_caller_name()}...")
         try:
             with open(file=self._read_path, mode="r") as f:
                 self.settings = self._from_dict(data=self._read(file=f))
                 if self._auto_sanitize_on_load:
                     self.sanitize_settings()
+            logger.debug(msg=f"Settings loaded from {self._read_path}.")
         except IOError as e:
             logger.exception(msg="Error while reading settings from file.")
             raise LoadError("Error while reading settings from file.") from e
@@ -285,6 +298,7 @@ class SettingsManagerBase(ABC, Generic[T]):
             SanitizationError: If an error occurs while sanitizing the settings.
 
         """
+        logger.debug(msg=f"Sanitization requested by {get_caller_name()}...")
         settings: Dict[str, Any] = self._to_dict(obj=self.settings)
         default_settings: Dict[str, Any] = self._to_dict(obj=self._default_settings)
 
@@ -295,10 +309,19 @@ class SettingsManagerBase(ABC, Generic[T]):
                 dict_path="",
             )
 
+            logger.debug(msg=f"Got {len(keys_to_remove)} total keys to remove.")
+            if keys_to_remove:
+                logger.debug(msg=f"{keys_to_remove}")
+            logger.debug(msg=f"Got {len(keys_to_add)} total keys to add.")
+            if keys_to_add:
+                logger.debug(msg=f"{keys_to_add}")
+
             for key in keys_to_remove:
+                logger.debug(msg=f"Removing key: {key}")
                 self._remove_key(key=key)
 
             for key, value in keys_to_add.items():
+                logger.debug(msg=f"Adding key: {key} with value: {value}")
                 self._add_key(key=key, value=value)
         except SanitizationError as e:
             logger.exception(msg="Error while sanitizing settings.")
@@ -314,11 +337,17 @@ class SettingsManagerBase(ABC, Generic[T]):
         keys_to_remove: List[str] = []
         keys_to_add: Dict[str, Any] = {}
 
+        logger.debug(msg=f"Checking settings in dict_path: {dict_path if dict_path else "root"}...")
+
         for key in settings:
             current_path: str = f"{dict_path}.{key}" if dict_path else key
             if key not in default_settings:
                 keys_to_remove.append(current_path)
+                logger.debug(
+                    msg=f"Found and added key {current_path} to key removal list."
+                )
             elif isinstance(settings[key], dict):
+                logger.debug(msg=f"{current_path} is a dictionary; Recursing...")
                 nested_keys_to_remove, nested_keys_to_add = self._sanitize_settings(
                     settings=settings[key],
                     default_settings=default_settings[key],
@@ -326,12 +355,16 @@ class SettingsManagerBase(ABC, Generic[T]):
                 )
                 keys_to_remove.extend(nested_keys_to_remove)
                 keys_to_add.update(nested_keys_to_add)
+                logger.debug(
+                    msg=f"Finished recursion for {current_path}. Got {len(nested_keys_to_remove)} keys to remove and {len(nested_keys_to_add)} keys to add."
+                )
 
         for key in default_settings:
             if key not in settings:
                 keys_to_add[f"{dict_path}.{key}" if dict_path else key] = (
                     default_settings[key]
                 )
+                logger.debug(msg=f"Added missing key {key} to key addition list.")
 
         return keys_to_remove, keys_to_add
 
