@@ -22,7 +22,7 @@ def set_file_paths(
     write_path: Optional[str] = None,
 ) -> tuple[Path, Path]:
     """
-    Set the file paths for reading and writing.
+    Attempts to resolve any relative paths and returns the Path objects for the read and write paths.
 
     Args:
         path (Optional[str]): The path to use for both reading and writing.
@@ -53,7 +53,7 @@ def set_file_paths(
         read_path = path
         write_path = path
     assert read_path is not None and write_path is not None
-    return Path(read_path), Path(write_path)
+    return Path(read_path).resolve(), Path(write_path).resolve()
 
 
 @overload
