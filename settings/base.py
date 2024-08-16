@@ -17,6 +17,7 @@ from platform import system, version, architecture, python_version
 from copy import deepcopy
 from time import perf_counter
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 
 from settings import logger, YAML_INSTALLED, TOML_INSTALLED
 from settings.exceptions import (
@@ -163,6 +164,24 @@ class SettingsManagerBase(ABC, Generic[T]):
         except IOError as e:
             logger.exception(msg="Error while writing settings to file.")
             raise SaveError("Error while writing settings to file.") from e
+
+    @contextmanager
+    def save_context(self) -> Generator[None, Any, None]:
+        """
+        A context manager that allows you to save the settings data to a file within a context block.
+
+        If the auto_sanitize flag is set to True, the settings will be sanitized before saving.
+
+        Yields:
+            None: The context manager yields None.
+
+        Raises:
+            SaveError: If there is an error while writing the settings to the file.
+        """
+        try:
+            yield
+        finally:
+            self.save()
 
     def _write(self, data: Dict[str, Any], file: IO) -> None:
         """
