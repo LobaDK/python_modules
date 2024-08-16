@@ -1,6 +1,7 @@
 from typing import Optional
 from pathlib import Path
 from typing import Dict, overload, Tuple, TypeVar
+from inspect import stack
 
 from settings.exceptions import (
     MissingPathError,
@@ -216,3 +217,23 @@ def filter_locals(locals_dict: dict[str, T]) -> dict[str, T]:
 
     """
     return {key: value for key, value in locals_dict.items() if not key.startswith("_")}
+
+
+def get_caller_name() -> str:
+    """
+    Gets the name of the caller of the function.
+
+    Returns:
+        str: The name of the caller of the function. If the caller is not available, returns `'Unknown'`.
+
+    Examples:
+        >>> get_caller_name()
+        'get_caller_name'
+
+    """
+    if len(stack()) < 3:
+        return "Unknown"
+    func_name: str = stack()[2].function
+    if func_name == "save_context":
+        func_name = f"{stack()[4].function} -> {func_name}"
+    return func_name
