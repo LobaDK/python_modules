@@ -23,6 +23,78 @@ class TemplateSettings:
 
 
 class SettingsManagerWithDataclass(SettingsManagerBase[T]):
+    """
+    SettingsManager variant which uses a dataclass to store settings.
+
+    This class provides functionality for managing settings data, including loading, saving, and sanitizing settings.
+    Supports type parameterization to help IDEs and type checkers infer which settings object is being used and how it can be used.
+    Refer to the Examples section for more information on how to use this class.
+
+    args:
+        path (Optional[str]): The path to the settings file. Defaults to None.
+        autosave (bool): Flag indicating whether to automatically save the settings after any changes. Defaults to False.
+        auto_sanitize (bool): Flag indicating whether to automatically sanitize the settings after loading or saving. Defaults to False.
+        config_format (Optional[str]): The format of the settings file. Defaults to None.
+        default_settings (T): The default settings data. Must be provided.
+        read_path (Optional[str]): The path to read the settings file from. Defaults to None.
+        write_path (Optional[str]): The path to write the settings file to. Defaults to None.
+        autosave_on_exit (bool): Flag indicating whether to automatically save the settings when the program exits. Defaults to False.
+        auto_sanitize_on_load (bool): Flag indicating whether to automatically sanitize the settings after loading. Defaults to False.
+        auto_sanitize_on_save (bool): Flag indicating whether to automatically sanitize the settings before saving. Defaults to False.
+        ValueError: If default_settings is not provided.
+
+    Attributes:
+        settings (T): The current settings data.
+
+    Methods:
+        save(): Save the settings data to a file.
+        autosave(): A context manager that allows you to save the settings data to a file within a context block.
+        load(): Load the settings from the specified file into the internal data attribute.
+        sanitize_settings(): Sanitizes the settings data by applying the default settings and removing any invalid or unnecessary values.
+
+    Examples:
+        ```
+        >>> from dataclasses import dataclass, field
+
+        >>> @dataclass
+        ... class MySection:
+        ...    section_key: str = field(default="section_value")
+
+        >>> @dataclass
+        ... class MySettings:
+        ...    key: str = field(default="value")
+        ...    section: MySection = field(default_factory=MySection)
+
+        >>> settings_manager: SettingsManagerWithDataclass[MySettings] = SettingsManagerWithDataclass(
+        ...    path="settings.json",
+        ...    default_settings=MySettings()
+        ... )
+
+        # The class already automatically loads the settings data from the file, but it can be done manually as well:
+        >>> settings_manager.load()
+
+        # Access the settings data directly:
+        >>> print(settings_manager.settings.key)
+        value
+
+        >>> print(settings_manager.settings.section.section_key)
+        section_value
+
+        # Modify the settings data:
+        >>> settings_manager.settings.key = "new_value"
+        >>> settings_manager.settings.section.section_key = "new_section_value"
+
+        # Save the modified settings data to the file:
+        >>> settings_manager.save()
+
+        # Using the autosave context manager, you can mimic the behavior of autosaving after any changes:
+        >>> with settings_manager.autosave():
+        ...    settings_manager.settings.key = "new_value"
+        ...    settings_manager.settings.section.section_key = "new_section_value"
+
+        ```
+    """
+
     def _to_dict(self, obj: "DataclassInstance") -> Dict[str, Any]:
         """
         Converts the settings object to a dictionary using dataclasses.asdict.

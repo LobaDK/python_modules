@@ -39,6 +39,35 @@ T = TypeVar("T")
 
 
 class SettingsManagerBase(ABC, Generic[T]):
+    """
+    Base class for managing settings.
+
+    This class provides functionality for managing settings data, including loading, saving, and sanitizing settings.
+    Supports type parameterization to help IDEs and type checkers infer which settings object is being used and how it can be used.
+
+    args:
+        path (Optional[str]): The path to the settings file. Defaults to None.
+        autosave (bool): Flag indicating whether to automatically save the settings after any changes. Defaults to False.
+        auto_sanitize (bool): Flag indicating whether to automatically sanitize the settings after loading or saving. Defaults to False.
+        config_format (Optional[str]): The format of the settings file. Defaults to None.
+        default_settings (T): The default settings data. Must be provided.
+        read_path (Optional[str]): The path to read the settings file from. Defaults to None.
+        write_path (Optional[str]): The path to write the settings file to. Defaults to None.
+        autosave_on_exit (bool): Flag indicating whether to automatically save the settings when the program exits. Defaults to False.
+        auto_sanitize_on_load (bool): Flag indicating whether to automatically sanitize the settings after loading. Defaults to False.
+        auto_sanitize_on_save (bool): Flag indicating whether to automatically sanitize the settings before saving. Defaults to False.
+        ValueError: If default_settings is not provided.
+
+    Attributes:
+        settings (T): The current settings data.
+
+    Methods:
+        save(): Save the settings data to a file.
+        autosave(): A context manager that allows you to save the settings data to a file within a context block.
+        load(): Load the settings from the specified file into the internal data attribute.
+        sanitize_settings(): Sanitizes the settings data by applying the default settings and removing any invalid or unnecessary values.
+    """
+
     def __init__(
         self,
         path: Optional[str] = None,
