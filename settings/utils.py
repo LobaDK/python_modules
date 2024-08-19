@@ -201,15 +201,15 @@ def composite_toggle(composite: bool, options: T) -> T:
     return options
 
 
-def filter_locals(locals_dict: dict[str, T]) -> dict[str, T]:
+def filter_locals(locals_dict: Dict[str, T]) -> Dict[str, T]:
     """
     Filters out the private and protected variables from the locals dictionary.
 
     Args:
-        locals_dict (dict[str, T]): The dictionary of local variables.
+        locals_dict (Dict[str, T]): The dictionary of local variables.
 
     Returns:
-        dict[str, T]: The filtered dictionary of local variables.
+        Dict[str, T]: The filtered dictionary of local variables.
 
     Examples:
         >>> locals_dict = {"_private": 1, "__protected": 2, "public": 3}
