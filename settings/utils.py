@@ -1,6 +1,6 @@
 from typing import Dict, Optional, overload, Tuple, TypeVar
 from pathlib import Path
-from inspect import FrameInfo, stack
+from inspect import FrameInfo, stack, getmembers, currentframe
 
 from settings.exceptions import (
     MissingPathError,
@@ -220,22 +220,56 @@ def filter_locals(locals_dict: Dict[str, T]) -> Dict[str, T]:
     return {key: value for key, value in locals_dict.items() if not key.startswith("_")}
 
 
-def get_caller_name() -> str:
+def get_caller_stack(instance: Optional[object] = None) -> str:
     """
-    Gets the name of the caller of the function.
+    Gets a stack of callers leading up to the caller of the function, if available.
+
+    Optionally, the instance of the class that called can be provided to filter out method names and potentially provide a more accurate stack of callers.
+
+    Args:
+        instance (Optional[object]): The instance of the class that called the function. Defaults to None.
 
     Returns:
-        str: The name of the caller of the function. If the caller is not available, returns `'Unknown'`.
+        str: The name of the caller of the function. If no caller can be determined, returns "Unknown".
 
     Examples:
-        >>> get_caller_name()
-        'get_caller_name'
+        >>> get_caller_stack()
+        'run'
 
     """
-    _stack: list[FrameInfo] = stack()
+    _stack: list[FrameInfo] = stack()[:10]  # Limit the stack to 10 frames.
     if len(_stack) < 3:
         return "Unknown"
-    func_name: str = _stack[2].function
-    if func_name == "save_context":
-        func_name = f"{_stack[4].function} -> {func_name}"
-    return func_name
+
+    method_names: list[str] = []
+    if instance:
+        method_names = [
+            method_name
+            for method_name, _ in getmembers(object=instance, predicate=callable)
+            if not method_name.startswith("__")
+        ]
+
+    frame_length: int = len(_stack) - 1
+    caller_stack: str = ""
+
+    for index, frame in enumerate(iterable=_stack[2:frame_length]):
+        func_name: str = frame.function
+        # If the function name is a dunder method, skip it.
+        if func_name.startswith("__"):
+            continue
+        # if the function name is not in the list of local methods (if provided) and is not the current function, assume we've found the caller and return the stack.
+        elif (
+            func_name not in method_names and func_name != currentframe().f_code.co_name
+        ):
+            caller_stack += func_name
+            return caller_stack
+        # If we've reached the end of the stack, return what we managed to find.
+        elif index >= frame_length:
+            logger.debug(
+                msg=f"Did not have enough frames to find non-local caller name. Last frame: {func_name}."
+            )
+            if func_name:
+                caller_stack += func_name
+            return caller_stack if caller_stack else "Unknown"
+        else:
+            caller_stack += f"{func_name} -> "
