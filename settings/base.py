@@ -130,7 +130,7 @@ class SettingsManagerBase(ABC, Generic[T]):
         return self._settings
 
     @settings.setter
-    def settings(self, value: Any) -> None:
+    def settings(self, value: T) -> None:
         self._settings = value
 
     def _first_time_load(self) -> None:
