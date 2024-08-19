@@ -61,6 +61,11 @@ class SettingsManagerBase(ABC, Generic[T]):
         self._settings: T
         self._default_settings: T = deepcopy(x=default_settings)
 
+        self._safe_load: Optional[Callable[[IO], Dict[str, Any]]] = None
+        self._safe_dump: Optional[Callable[[Dict[str, Any], IO], None]] = None
+        self._toml_load: Optional[Callable[[IO], Dict[str, Any]]] = None
+        self._toml_dump: Optional[Callable[[Dict[str, Any], IO], None]] = None
+
         logger.debug(
             msg=f"\n=========== Initializing SettingsManager ===========\nSystem info: {system()} {version()} {architecture()[0]} Python {python_version()}\n"
         )
@@ -216,9 +221,13 @@ class SettingsManagerBase(ABC, Generic[T]):
         dump(obj=data, fp=file, indent=4)
 
     def _write_as_yaml(self, data: Dict[str, Any], file: IO) -> None:
+        if not self._safe_dump:
+            raise ImportError("PyYAML is not installed.")
         self._safe_dump(data, file)
 
     def _write_as_toml(self, data: Dict[str, Any], file: IO) -> None:
+        if not self._toml_dump:
+            raise ImportError("TOML is not installed.")
         self._toml_dump(data, file)
 
     def _write_as_ini(self, data: Dict[str, Any], file: IO) -> None:
@@ -273,9 +282,13 @@ class SettingsManagerBase(ABC, Generic[T]):
         return load(fp=file)
 
     def _read_as_yaml(self, file: IO) -> Dict[str, Any]:
+        if not self._safe_load:
+            raise ImportError("PyYAML is not installed.")
         return self._safe_load(file)
 
     def _read_as_toml(self, file: IO) -> Dict[str, Any]:
+        if not self._toml_load:
+            raise ImportError("TOML is not installed.")
         return self._toml_load(file)
 
     def _read_as_ini(self, file: IO) -> Dict[str, Any]:
