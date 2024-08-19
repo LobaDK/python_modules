@@ -92,7 +92,7 @@ def set_format(
         'json'
 
     """
-    format: str
+    format: str = None
     if config_format:
         if logger:
             logger.info(msg=f"User specified format: {config_format}.")
@@ -118,6 +118,8 @@ def set_format(
             "The TOML format is not supported because the TOML module is not installed."
         )
 
+    if not format:
+        raise UnsupportedFormatError("No format was specified or determined.")
     return format
 
 
