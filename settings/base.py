@@ -175,7 +175,7 @@ class SettingsManagerBase(ABC, Generic[T]):
             raise SaveError("Error while writing settings to file.") from e
 
     @contextmanager
-    def save_context(self) -> Generator[None, Any, None]:
+    def autosave(self) -> Generator[None, Any, None]:
         """
         A context manager that allows you to save the settings data to a file within a context block.
 

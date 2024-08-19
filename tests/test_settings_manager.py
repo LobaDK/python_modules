@@ -154,7 +154,7 @@ class TestSettingsManager(unittest.TestCase):
             path="settings.json", default_settings=default_settings_as_Dataclass
         )
 
-        with settings_manager.save_context():
+        with settings_manager.autosave():
             settings_manager.settings.section.key = "new value"
 
         self.assertEqual(
