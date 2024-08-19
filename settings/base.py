@@ -38,15 +38,6 @@ from settings.utils import (
 
 T = TypeVar("T")
 
-if YAML_INSTALLED:
-    logger.debug(msg="YAML module is installed, importing safe_load and safe_dump...")
-    from yaml import safe_load, safe_dump
-if TOML_INSTALLED:
-    logger.debug(
-        msg="TOML module is installed, importing load and dump as toml_load and toml_dump..."
-    )
-    from toml import load as toml_load, dump as toml_dump
-
 
 class TemplateSettings:
     """
@@ -80,6 +71,19 @@ class SettingsManagerBase(ABC, Generic[T]):
             msg=f"\n=========== Initializing SettingsManager ===========\nSystem info: {system()} {version()} {architecture()[0]} Python {python_version()}\n"
         )
         logger.debug(msg=f"args: {filter_locals(locals_dict=locals())}")
+
+        if YAML_INSTALLED:
+            logger.debug(msg="YAML module is installed, importing...")
+            from yaml import safe_load, safe_dump
+
+            self._safe_load = safe_load
+            self._safe_dump = safe_dump
+        if TOML_INSTALLED:
+            logger.debug(msg="TOML module is installed, importing...")
+            from toml import load as toml_load, dump as toml_dump
+
+            self._toml_load = toml_load
+            self._toml_dump = toml_dump
 
         self._read_path, self._write_path = set_file_paths(
             path=path, read_path=read_path, write_path=write_path
@@ -218,10 +222,10 @@ class SettingsManagerBase(ABC, Generic[T]):
         dump(obj=data, fp=file, indent=4)
 
     def _write_as_yaml(self, data: Dict[str, Any], file: IO) -> None:
-        safe_dump(data, file)
+        self._safe_dump(data, file)
 
     def _write_as_toml(self, data: Dict[str, Any], file: IO) -> None:
-        toml_dump(data, file)
+        self._toml_dump(data, file)
 
     def _write_as_ini(self, data: Dict[str, Any], file: IO) -> None:
         config = ConfigParser(allow_no_value=True)
@@ -275,10 +279,10 @@ class SettingsManagerBase(ABC, Generic[T]):
         return load(fp=file)
 
     def _read_as_yaml(self, file: IO) -> Dict[str, Any]:
-        return safe_load(file)
+        return self._safe_load(file)
 
     def _read_as_toml(self, file: IO) -> Dict[str, Any]:
-        return toml_load(file)
+        return self._toml_load(file)
 
     def _read_as_ini(self, file: IO) -> Dict[str, Any]:
         config = ConfigParser(allow_no_value=True)
