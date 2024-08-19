@@ -337,7 +337,9 @@ class SettingsManagerBase(ABC, Generic[T]):
         keys_to_remove: List[str] = []
         keys_to_add: Dict[str, Any] = {}
 
-        logger.debug(msg=f"Checking settings in dict_path: {dict_path if dict_path else "root"}...")
+        logger.debug(
+            msg=f"Checking settings in dict_path: {dict_path if dict_path else 'root'}..."
+        )
 
         for key in settings:
             current_path: str = f"{dict_path}.{key}" if dict_path else key
