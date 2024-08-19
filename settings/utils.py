@@ -37,9 +37,9 @@ def set_file_paths(
 
     Examples:
         >>> set_file_paths(path="settings.json")  # doctest: +ELLIPSIS
-        (...Path('settings.json'), ...Path('settings.json'))
+        (...Path('.../settings.json'), ...Path('.../settings.json'))
         >>> set_file_paths(read_path="settings.json", write_path="settings.json")  # doctest: +ELLIPSIS
-        (...Path('settings.json'), ...Path('settings.json'))
+        (...Path('.../settings.json'), ...Path('.../settings.json'))
 
     """
     if not path and not (read_path or write_path):
