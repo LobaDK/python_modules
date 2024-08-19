@@ -1,7 +1,6 @@
 from typing import Optional
 from pathlib import Path
-from typing import Dict, overload, Tuple, TypeVar
-from inspect import stack
+from inspect import FrameInfo, stack
 
 from settings.exceptions import (
     MissingPathError,
@@ -231,9 +230,10 @@ def get_caller_name() -> str:
         'get_caller_name'
 
     """
-    if len(stack()) < 3:
+    _stack: list[FrameInfo] = stack()
+    if len(_stack) < 3:
         return "Unknown"
-    func_name: str = stack()[2].function
+    func_name: str = _stack[2].function
     if func_name == "save_context":
-        func_name = f"{stack()[4].function} -> {func_name}"
+        func_name = f"{_stack[4].function} -> {func_name}"
     return func_name
