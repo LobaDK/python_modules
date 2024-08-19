@@ -55,6 +55,9 @@ class SettingsManagerBase(ABC, Generic[T]):
         auto_sanitize_on_save: bool = False,
     ) -> None:
 
+        if not default_settings:
+            raise ValueError("default_settings must be provided.")
+
         self._settings: T
         self._default_settings: T = deepcopy(x=default_settings)
 
