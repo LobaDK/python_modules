@@ -1,3 +1,4 @@
+from types import FrameType
 from typing import Dict, Optional, overload, Tuple, TypeVar
 from pathlib import Path
 from inspect import FrameInfo, stack, getmembers, currentframe
@@ -92,7 +93,7 @@ def set_format(
         'json'
 
     """
-    format: str = None
+    format: Optional[str] = None
     if config_format:
         if logger:
             logger.info(msg=f"User specified format: {config_format}.")
@@ -170,7 +171,7 @@ def _determine_format_from_file_extension(
         )
 
 
-def composite_toggle(composite: bool, options: T) -> T:
+def composite_toggle(composite: bool, options: Tuple[bool, ...]) -> Tuple[bool, ...]:
     """
     Uses the composite flag to determine if all individual toggles should be set to True.
 
@@ -251,6 +252,11 @@ def get_caller_stack(instance: Optional[object] = None) -> str:
 
     frame_length: int = len(_stack) - 1
     caller_stack: str = ""
+    current_frame: Optional[FrameType] = currentframe()
+    current_function_name: Optional[str] = None
+
+    if current_frame:
+        current_function_name = current_frame.f_code.co_name
 
     for index, frame in enumerate(iterable=_stack[2:frame_length]):
         func_name: str = frame.function
@@ -258,11 +264,9 @@ def get_caller_stack(instance: Optional[object] = None) -> str:
         if func_name.startswith("__"):
             continue
         # if the function name is not in the list of local methods (if provided) and is not the current function, assume we've found the caller and return the stack.
-        elif (
-            func_name not in method_names and func_name != currentframe().f_code.co_name
-        ):
+        elif func_name not in method_names and func_name != current_function_name:
             caller_stack += func_name
-            return caller_stack
+            break
         # If we've reached the end of the stack, return what we managed to find.
         elif index >= frame_length:
             logger.debug(
@@ -270,6 +274,7 @@ def get_caller_stack(instance: Optional[object] = None) -> str:
             )
             if func_name:
                 caller_stack += func_name
-            return caller_stack if caller_stack else "Unknown"
+            break
         else:
             caller_stack += f"{func_name} -> "
+    return caller_stack

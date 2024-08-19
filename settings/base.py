@@ -10,7 +10,6 @@ from typing import (
     Generic,
     TypeVar,
 )
-from types import MappingProxyType
 from json import load, dump
 from configparser import ConfigParser
 from atexit import register
@@ -61,10 +60,10 @@ class SettingsManagerBase(ABC, Generic[T]):
         self._settings: T
         self._default_settings: T = deepcopy(x=default_settings)
 
-        self._safe_load: Optional[Callable[[IO], Dict[str, Any]]] = None
-        self._safe_dump: Optional[Callable[[Dict[str, Any], IO], None]] = None
-        self._toml_load: Optional[Callable[[IO], Dict[str, Any]]] = None
-        self._toml_dump: Optional[Callable[[Dict[str, Any], IO], None]] = None
+        self._safe_load = None
+        self._safe_dump = None
+        self._toml_load = None
+        self._toml_dump = None
 
         logger.debug(
             msg=f"\n=========== Initializing SettingsManager ===========\nSystem info: {system()} {version()} {architecture()[0]} Python {python_version()}\n"
@@ -343,7 +342,7 @@ class SettingsManagerBase(ABC, Generic[T]):
     def _sanitize_settings(
         self,
         settings: Dict[str, Any],
-        default_settings: MappingProxyType[str, Any],
+        default_settings: Dict[str, Any],
         dict_path: str,
     ) -> Tuple[List[str], Dict[str, Any]]:
 
@@ -448,7 +447,7 @@ class SettingsManagerBase(ABC, Generic[T]):
         return True
 
     @abstractmethod
-    def _to_dict(self, obj: object) -> Dict[str, Any]:
+    def _to_dict(self, obj: Any) -> Dict[str, Any]:
         """
         Converts the settings object to a dictionary.
 

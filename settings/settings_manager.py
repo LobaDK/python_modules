@@ -1,13 +1,14 @@
+from __future__ import annotations
 from json import dumps, loads
+from dacite import from_dict
+from dataclasses import asdict
+from typing import Any, Dict, TypeVar, TYPE_CHECKING, Union
+
+
 from settings.base import SettingsManagerBase
 
-
-from dacite import from_dict
-
-
-from dataclasses import asdict
-from typing import Any, Dict, TypeVar
-
+if TYPE_CHECKING:
+    from _typeshed import DataclassInstance
 
 T = TypeVar("T")
 
@@ -22,7 +23,7 @@ class TemplateSettings:
 
 
 class SettingsManagerWithDataclass(SettingsManagerBase[T]):
-    def _to_dict(self, obj: object) -> Dict[str, Any]:
+    def _to_dict(self, obj: "DataclassInstance") -> Dict[str, Any]:
         """
         Converts the settings object to a dictionary using dataclasses.asdict.
 
@@ -58,7 +59,10 @@ class SettingsManagerWithClass(SettingsManagerBase[T]):
         Returns:
             Dict[str, Any]: _description_
         """
-        return self._class_to_dict(obj=obj)
+        new_dict = self._class_to_dict(obj=obj)
+        if not isinstance(new_dict, dict):
+            raise TypeError("Settings object must be a dictionary.")
+        return new_dict
 
     def _from_dict(self, data: Dict[str, Any]) -> T:
         """
@@ -72,7 +76,7 @@ class SettingsManagerWithClass(SettingsManagerBase[T]):
         """
         return loads(s=dumps(obj=data), object_hook=TemplateSettings)
 
-    def _class_to_dict(self, obj: object) -> dict | list | dict[str, Any] | object:
+    def _class_to_dict(self, obj: object) -> Union[dict, list, Dict[str, Any], object]:
         """
         Recursively converts a given object to a dictionary representation.
 
