@@ -1,5 +1,5 @@
 from json import dumps, loads
-from settings.base import SettingsManagerBase, TemplateSettings
+from settings.base import SettingsManagerBase
 
 
 from dacite import from_dict
@@ -10,6 +10,15 @@ from typing import Any, Dict, TypeVar
 
 
 T = TypeVar("T")
+
+
+class TemplateSettings:
+    """
+    Used by SettingsManagerClass to convert a dictionary to an object using json.loads and json.dumps.
+    """
+
+    def __init__(self, dict: dict) -> None:
+        self.__dict__.update(dict)
 
 
 class SettingsManagerWithDataclass(SettingsManagerBase[T]):

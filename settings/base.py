@@ -39,15 +39,6 @@ from settings.utils import (
 T = TypeVar("T")
 
 
-class TemplateSettings:
-    """
-    Used by SettingsManagerClass to convert a dictionary to an object using json.loads and json.dumps.
-    """
-
-    def __init__(self, dict: dict) -> None:
-        self.__dict__.update(dict)
-
-
 class SettingsManagerBase(ABC, Generic[T]):
     def __init__(
         self,
