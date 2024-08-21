@@ -359,11 +359,13 @@ class SettingsManagerBase(ABC, Generic[T]):
 
             for key in keys_to_remove:
                 logger.debug(msg=f"Removing key: {key}")
-                self._remove_key(key=key)
+                self._remove_key(settings=settings, key=key)
 
             for key, value in keys_to_add.items():
                 logger.debug(msg=f"Adding key: {key} with value: {value}")
-                self._add_key(key=key, value=value)
+                self._add_key(settings=settings, key=key, value=value)
+
+            self.settings = self._from_dict(data=settings)
         except SanitizationError as e:
             logger.exception(msg="Error while sanitizing settings.")
             raise e
@@ -411,7 +413,7 @@ class SettingsManagerBase(ABC, Generic[T]):
 
         return keys_to_remove, keys_to_add
 
-    def _remove_key(self, key: str) -> None:
+    def _remove_key(self, settings: Dict[str, Any], key: str) -> None:
         """
         Removes the key from the settings data.
 
@@ -419,7 +421,6 @@ class SettingsManagerBase(ABC, Generic[T]):
             key (str): The key to remove from the settings data.
         """
         keys: List[str] = key.split(sep=".")
-        settings: Dict[str, Any] = self._to_dict(obj=self.settings)
         current_dict: Dict[str, Any] = settings
 
         # Traverse the settings data to the parent of the key to remove
@@ -436,10 +437,7 @@ class SettingsManagerBase(ABC, Generic[T]):
         # Since 'current_dict' and the nested dictionary in 'settings' are still the same object in memory,
         # deleting the key from 'current_dict' also deletes it from the corresponding dictionary inside 'settings'.
 
-        # Update the settings data with the modified dictionary
-        self.settings = self._from_dict(data=settings)
-
-    def _add_key(self, key: str, value: Any) -> None:
+    def _add_key(self, settings: Dict[str, Any], key: str, value: Any) -> None:
         """
         Adds the key with the specified value to the settings data.
 
@@ -448,16 +446,12 @@ class SettingsManagerBase(ABC, Generic[T]):
             value (Any): The value to associate with the key.
         """
         keys: List[str] = key.split(sep=".")
-        settings: Dict[str, Any] = self._to_dict(obj=self.settings)
         current_dict: Dict[str, Any] = settings
 
         # Traverse the settings data to the parent of the key to add
         for key in keys[:-1]:
             current_dict = current_dict[key]
         current_dict[keys[-1]] = value
-
-        # Update the settings data with the modified dictionary
-        self.settings = self._from_dict(data=settings)
 
     @staticmethod
     def valid_ini_format(data: Dict[str, Any]) -> bool:
