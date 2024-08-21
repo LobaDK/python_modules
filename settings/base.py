@@ -475,6 +475,12 @@ class SettingsManagerBase(ABC, Generic[T]):
                 return False
         return True
 
+    def restore_defaults(self) -> None:
+        """
+        Restores the stored settings to the default settings.
+        """
+        self.settings = deepcopy(x=self._default_settings)
+
     @abstractmethod
     def _to_dict(self, obj: Any) -> Dict[str, Any]:
         """
