@@ -1,25 +1,16 @@
 from __future__ import annotations
-from json import dumps, loads
 from dacite import from_dict
 from dataclasses import asdict
-from typing import Any, Dict, TypeVar, TYPE_CHECKING, Union
+from typing import Any, Dict, Optional, TypeVar, TYPE_CHECKING, Union, Type
 
 
+from settings import logger
 from settings.base import SettingsManagerBase
 
 if TYPE_CHECKING:
     from _typeshed import DataclassInstance
 
 T = TypeVar("T")
-
-
-class TemplateSettings:
-    """
-    Used by SettingsManagerClass to convert a dictionary to an object using json.loads and json.dumps.
-    """
-
-    def __init__(self, dict: dict) -> None:
-        self.__dict__.update(dict)
 
 
 class SettingsManagerWithDataclass(SettingsManagerBase[T]):
@@ -136,7 +127,7 @@ class SettingsManagerWithClass(SettingsManagerBase[T]):
             raise TypeError("Settings object must be a dictionary.")
         return new_dict
 
-    def _from_dict(self, data: Dict[str, Any]) -> T:
+    def _from_dict(self, data: Dict[str, Any], cls: Optional[Type[T]] = None) -> T:
         """
         Converts the dictionary data to a settings object using json.loads and json.dumps.
 
@@ -146,7 +137,22 @@ class SettingsManagerWithClass(SettingsManagerBase[T]):
         Returns:
             T: The dictionary data converted to a settings object.
         """
-        return loads(s=dumps(obj=data), object_hook=TemplateSettings)
+        logger.debug(msg=f"Converting data to settings object: {data}")
+
+        if cls is not None:
+            settings_instance: T = cls()
+        else:
+            settings_instance = self._default_settings.__class__()
+
+        for key, value in data.items():
+            if isinstance(value, dict):
+                nested_cls = getattr(settings_instance, key).__class__
+                nested_instance: T = self._from_dict(data=value, cls=nested_cls)
+                setattr(settings_instance, key, nested_instance)
+            else:
+                setattr(settings_instance, key, value)
+
+        return settings_instance
 
     def _class_to_dict(self, obj: object) -> Union[dict, list, Dict[str, Any], object]:
         """
