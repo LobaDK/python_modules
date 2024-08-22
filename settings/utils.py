@@ -260,8 +260,8 @@ def get_caller_stack(instance: Optional[object] = None) -> str:
 
     for index, frame in enumerate(iterable=_stack[2:frame_length]):
         func_name: str = frame.function
-        # If the function name is a dunder method, skip it.
-        if func_name.startswith("__"):
+        # If the function name is a dunder method or the code is top-level, skip it.
+        if func_name.startswith("__") or func_name == "<module>":
             continue
         # if the function name is not in the list of local methods (if provided) and is not the current function, assume we've found the caller and return the stack.
         elif func_name not in method_names and func_name != current_function_name:
