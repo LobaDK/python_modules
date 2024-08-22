@@ -96,6 +96,7 @@ class SettingsManagerWithDataclass(SettingsManagerBase[T]):
         Returns:
             Dict[str, Any]: The settings object converted to a dictionary.
         """
+        logger.debug(msg=f"Converting settings object to dictionary: {obj}")
         return asdict(obj)
 
     def _from_dict(self, data: Dict[str, Any]) -> T:
@@ -108,6 +109,7 @@ class SettingsManagerWithDataclass(SettingsManagerBase[T]):
         Returns:
             T: The dictionary data converted to a settings object.
         """
+        logger.debug(msg=f"Converting data to settings object: {data}")
         return from_dict(data_class=self._default_settings.__class__, data=data)
 
 
@@ -122,6 +124,7 @@ class SettingsManagerWithClass(SettingsManagerBase[T]):
         Returns:
             Dict[str, Any]: _description_
         """
+        logger.debug(msg=f"Converting settings object to dictionary: {obj}")
         new_dict = self._class_to_dict(obj=obj)
         if not isinstance(new_dict, dict):
             raise TypeError("Settings object must be a dictionary.")
