@@ -277,6 +277,11 @@ class SettingsManagerBase(ABC, Generic[T]):
         with open(file=self._read_path, mode="r") as f:
             try:
                 self.settings = self._from_dict(data=self._read(file=f))
+                if not self.settings:
+                    logger.warning(
+                        msg="Settings file is empty or could not be read. Applying default settings."
+                    )
+                    self.settings = deepcopy(x=self._default_settings)
                 if self._auto_sanitize_on_load:
                     self.sanitize_settings()
                 logger.debug(msg=f"Settings loaded from {self._read_path}.")
