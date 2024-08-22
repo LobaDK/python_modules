@@ -15,10 +15,10 @@ T = TypeVar("T")
 
 class SettingsManagerWithDataclass(SettingsManagerBase[T]):
     """
-    SettingsManager variant which uses a dataclass to store settings.
+    SettingsManager variant which uses a dataclass to store settings. Supports saving as JSON, INI, YAML and TOML.
 
     This class provides functionality for managing settings data, including loading, saving, and sanitizing settings.
-    Supports type parameterization to help IDEs and type checkers infer which settings object is being used and how it can be used.
+    Supports type parameterization to help IDEs and type checkers infer which settings object is being used and its structure.
     Refer to the Examples section for more information on how to use this class.
 
     args:
@@ -42,48 +42,54 @@ class SettingsManagerWithDataclass(SettingsManagerBase[T]):
         autosave(): A context manager that allows you to save the settings data to a file within a context block.
         load(): Load the settings from the specified file into the internal data attribute.
         sanitize_settings(): Sanitizes the settings data by applying the default settings and removing any invalid or unnecessary values.
+        restore_defaults(): Restores the settings data to the default settings.
 
     Examples:
-        ```
+        # Import the necessary modules and classes
         >>> from dataclasses import dataclass, field
 
+        # Define the dataclass structure for the settings. This can be as complex as needed. If the format is INI, the dataclass must start with dict-like sections.
         >>> @dataclass
-        ... class MySection:
-        ...    section_key: str = field(default="section_value")
-
-        >>> @dataclass
-        ... class MySettings:
+        ... class Section:
         ...    key: str = field(default="value")
-        ...    section: MySection = field(default_factory=MySection)
 
-        >>> settings_manager: SettingsManagerWithDataclass[MySettings] = SettingsManagerWithDataclass(
-        ...    path="settings.json",
-        ...    default_settings=MySettings()
+        >>> @dataclass
+        ... class DefaultSettings:
+        ...    section: Section = field(default_factory=Section)
+
+        # Doctest breaks something in the Dacite or typing module if using the defined dataclass, so we must import it as a workaround.
+        >>> from tests.test_settings_manager import DefaultSettingsAsDataClass
+
+        # Create an instance of the SettingsManagerWithDataclass class, providing the path to the settings file and the default settings data. The DefaultSettingsAsDataClass class is also provided as the typing parameter, which helps IDEs and type checkers infer the structure of the settings data.
+        >>> settings_manager: SettingsManagerWithDataclass[DefaultSettingsAsDataClass] = SettingsManagerWithDataclass(
+        ...    path="settings.ini",
+        ...    default_settings=DefaultSettingsAsDataClass()
         ... )
 
-        # The class already automatically loads the settings data from the file, but it can be done manually as well:
+        # While the class does automatically load the settings from file if found, it can also be done manually:
         >>> settings_manager.load()
 
-        # Access the settings data directly:
-        >>> print(settings_manager.settings.key)
+        # Access the settings like any other dataclass instance:
+        >>> print(settings_manager.settings.section.key)
         value
 
-        >>> print(settings_manager.settings.section.section_key)
-        section_value
-
         # Modify the settings data:
-        >>> settings_manager.settings.key = "new_value"
-        >>> settings_manager.settings.section.section_key = "new_section_value"
+        >>> settings_manager.settings.section.key = "new_value"
 
-        # Save the modified settings data to the file:
+        # Save the settings
         >>> settings_manager.save()
+
+        # Reset the settings to the default values
+        >>> settings_manager.restore_defaults()
 
         # Using the autosave context manager, you can mimic the behavior of autosaving after any changes:
         >>> with settings_manager.autosave():
-        ...    settings_manager.settings.key = "new_value"
-        ...    settings_manager.settings.section.section_key = "new_section_value"
+        ...    settings_manager.settings.section.key = "value"
 
-        ```
+        # ONLY FOR THE DOCTEST: Clean up the settings file
+        >>> from os import unlink
+        >>> unlink("settings.ini")
+
     """
 
     def _to_dict(self, obj: "DataclassInstance") -> Dict[str, Any]:
@@ -114,6 +120,78 @@ class SettingsManagerWithDataclass(SettingsManagerBase[T]):
 
 
 class SettingsManagerWithClass(SettingsManagerBase[T]):
+    """
+    SettingsManager variant which uses a standard class to store settings. Supports saving as JSON, INI, YAML and TOML.
+
+    This class provides functionality for managing settings data, including loading, saving, and sanitizing settings.
+    Supports type parameterization to help IDEs and type checkers infer which settings object is being used and its structure.
+    Refer to the Examples section for more information on how to use this class.
+
+    args:
+        path (Optional[str]): The path to the settings file. Defaults to None.
+        autosave (bool): Flag indicating whether to automatically save the settings after any changes. Defaults to False.
+        auto_sanitize (bool): Flag indicating whether to automatically sanitize the settings after loading or saving. Defaults to False.
+        config_format (Optional[str]): The format of the settings file. Defaults to None.
+        default_settings (T): The default settings data. Must be provided.
+        read_path (Optional[str]): The path to read the settings file from. Defaults to None.
+        write_path (Optional[str]): The path to write the settings file to. Defaults to None.
+        autosave_on_exit (bool): Flag indicating whether to automatically save the settings when the program exits. Defaults to False.
+        auto_sanitize_on_load (bool): Flag indicating whether to automatically sanitize the settings after loading. Defaults to False.
+        auto_sanitize_on_save (bool): Flag indicating whether to automatically sanitize the settings before saving. Defaults to False.
+        ValueError: If default_settings is not provided.
+
+    Attributes:
+        settings (T): The current settings data.
+
+    Methods:
+        save(): Save the settings data to a file.
+        autosave(): A context manager that allows you to save the settings data to a file within a context block.
+        load(): Load the settings from the specified file into the internal data attribute.
+        sanitize_settings(): Sanitizes the settings data by applying the default settings and removing any invalid or unnecessary values.
+        restore_defaults(): Restores the settings data to the default settings.
+
+    Examples:
+        # Define the class structure for the settings. This can be as complex as needed. If the format is INI, the class must start with dict-like sections.
+        >>> class Section:
+        ...     def __init__(self):
+        ...         self.section_key = "section_value"
+
+        >>> class Settings:
+        ...     def __init__(self):
+        ...         self.section = Section()
+
+        # Create an instance of the SettingsManagerWithClass class, providing the path to the settings file and the default settings data. The Settings class is also provided as the typing parameter, which helps IDEs and type checkers infer the structure of the settings data.
+        >>> settings_manager: SettingsManagerWithClass[Settings] = SettingsManagerWithClass(
+        ...     path="settings.yaml",
+        ...     default_settings=Settings()
+        ... )
+
+        # While the class does automatically load the settings from file if found, it can also be done manually:
+        >>> settings_manager.load()
+
+        # Access the settings like any other class instance:
+        >>> print(settings_manager.settings.section.section_key)
+        section_value
+
+        # Modify the settings
+        >>> settings_manager.settings.section.section_key = "new_section_value"
+
+        # Save the settings
+        >>> settings_manager.save()
+
+        # Reset the settings to the default values
+        >>> settings_manager.restore_defaults()
+
+        # Using the autosave context manager, you can mimic the behavior of autosaving after any changes:
+        >>> with settings_manager.autosave():
+        ...     settings_manager.settings.section.section_key = "section_value"
+
+        # ONLY FOR THE DOCTEST: Clean up the settings file
+        >>> from os import unlink
+        >>> unlink("settings.yaml")
+
+    """
+
     def _to_dict(self, obj: object) -> Dict[str, Any]:
         """
         Converts the settings object to a dictionary a custom method which iterates through the object's attributes.
