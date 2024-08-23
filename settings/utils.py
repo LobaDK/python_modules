@@ -52,8 +52,11 @@ def set_file_paths(
     if path:
         read_path = path
         write_path = path
-    assert read_path is not None and write_path is not None
-    return Path(read_path).resolve(), Path(write_path).resolve()
+
+    if read_path is not None and write_path is not None:
+        return Path(read_path).resolve(), Path(write_path).resolve()
+    else:
+        raise MissingPathError("You must provide both a read_path and write_path.")
 
 
 @overload
