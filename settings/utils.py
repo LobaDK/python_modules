@@ -1,5 +1,5 @@
 from types import FrameType
-from typing import Dict, Optional, overload, Tuple, TypeVar
+from typing import Dict, Iterable, Optional, overload, Tuple, TypeVar, List
 from pathlib import Path
 from inspect import FrameInfo, stack, getmembers, currentframe
 
@@ -224,14 +224,14 @@ def filter_locals(locals_dict: Dict[str, T]) -> Dict[str, T]:
     return {key: value for key, value in locals_dict.items() if not key.startswith("_")}
 
 
-def get_caller_stack(instance: Optional[object] = None) -> str:
+def get_caller_stack(instances: Optional[Iterable[object]] = None) -> str:
     """
     Gets a stack of callers leading up to the caller of the function, if available.
 
-    Optionally, the instance of the class that called can be provided to filter out method names and potentially provide a more accurate stack of callers.
+    Optionally, an iterable of instances that should be considered local methods and ignored, can be provided.
 
     Args:
-        instance (Optional[object]): The instance of the class that called the function. Defaults to None.
+        instances (Optional[Iterable[object]]): An iterable of instances that should be considered local methods and ignored.
 
     Returns:
         str: The name of the caller of the function. If no caller can be determined, returns "Unknown".
@@ -241,17 +241,15 @@ def get_caller_stack(instance: Optional[object] = None) -> str:
         'run'
 
     """
-    _stack: list[FrameInfo] = stack()[:10]  # Limit the stack to 10 frames.
+    _stack: List[FrameInfo] = stack()[:10]  # Limit the stack to 10 frames.
     if len(_stack) < 3:
         return "Unknown"
 
-    method_names: list[str] = []
-    if instance:
-        method_names = [
-            method_name
-            for method_name, _ in getmembers(object=instance, predicate=callable)
-            if not method_name.startswith("__")
-        ]
+    method_names: List[str] = []
+    for item in instances or []:
+        for method_name, _ in getmembers(object=item, predicate=callable):
+            if not method_name.startswith("__") and method_name not in method_names:
+                method_names.append(method_name)
 
     frame_length: int = len(_stack) - 1
     caller_stack: str = ""

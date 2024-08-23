@@ -186,7 +186,7 @@ class SettingsManagerBase(ABC, Generic[T]):
         Raises:
             SaveError: If there is an error while writing the settings to the file.
         """
-        logger.debug(msg=f"Save requested by {get_caller_stack(instance=self)}...")
+        logger.debug(msg=f"Save requested by {get_caller_stack(instances=[self])}...")
         settings_data: Dict[str, Any] = self._to_dict(obj=self.settings)
         if self._auto_sanitize_on_save:
             self.sanitize_settings()
@@ -273,7 +273,7 @@ class SettingsManagerBase(ABC, Generic[T]):
         Raises:
             LoadError: If there is an error while reading the settings from the file.
         """
-        logger.debug(msg=f"Load requested by {get_caller_stack(instance=self)}...")
+        logger.debug(msg=f"Load requested by {get_caller_stack(instances=[self])}...")
         with open(file=self._read_path, mode="r") as f:
             try:
                 self.settings = self._from_dict(data=self._read(file=f))
@@ -343,7 +343,7 @@ class SettingsManagerBase(ABC, Generic[T]):
 
         """
         logger.debug(
-            msg=f"Sanitization requested by {get_caller_stack(instance=self)}..."
+            msg=f"Sanitization requested by {get_caller_stack(instances=[self])}..."
         )
         settings: Dict[str, Any] = self._to_dict(obj=self.settings)
         default_settings: Dict[str, Any] = self._to_dict(obj=self._default_settings)
