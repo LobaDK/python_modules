@@ -1,7 +1,9 @@
 from __future__ import annotations
 from dacite import from_dict
 from dataclasses import asdict
-from typing import Any, Dict, Optional, TypeVar, TYPE_CHECKING, Union, Type
+from typing import Any, Dict, TypeVar, TYPE_CHECKING, Union, Iterable, List, Optional
+from inspect import isclass
+from json import loads, dumps
 
 
 from settings import logger
@@ -197,10 +199,11 @@ class SettingsManagerWithClass(SettingsManagerBase[T]):
         Converts the settings object to a dictionary a custom method which iterates through the object's attributes.
 
         Args:
-            obj (object): _description_
+            obj (object): The settings object to convert to a dictionary.
+            include_class_references (bool): Flag indicating whether to include a reference to the class in the dictionary. Operations planning to reconstruct the object from the dictionary should make sure this is set to True. Defaults to True.
 
         Returns:
-            Dict[str, Any]: _description_
+            Dict[str, Any]: The settings object converted to a dictionary.
         """
         logger.debug(msg=f"Converting settings object to dictionary: {obj}")
         new_dict = self._class_to_dict(obj=obj)
@@ -208,9 +211,9 @@ class SettingsManagerWithClass(SettingsManagerBase[T]):
             raise TypeError("Settings object must be a dictionary.")
         return new_dict
 
-    def _from_dict(self, data: Dict[str, Any], cls: Optional[Type[T]] = None) -> T:
+    def _from_dict(self, data: Dict[str, Any]) -> T:
         """
-        Converts the dictionary data to a settings object using json.loads and json.dumps.
+        Converts the dictionary data to a settings object using a custom method which iterates through the dictionary.
 
         Args:
             data (Dict[str, Any]): The dictionary data to convert to a settings object.
@@ -219,21 +222,51 @@ class SettingsManagerWithClass(SettingsManagerBase[T]):
             T: The dictionary data converted to a settings object.
         """
         logger.debug(msg=f"Converting data to settings object: {data}")
+        return loads(s=dumps(obj=data), object_hook=self._default_settings.__class__)
 
-        if cls is not None:
-            settings_instance: T = cls()
+    def _dict_to_class(
+        self,
+        data: Union[Dict[str, Any], List, Any],
+        parent_class: Optional[object] = None,
+    ) -> Any:
+        if isinstance(data, dict):
+            if parent_class is not None:
+                # Iterate over each key-value pair in the dictionary
+                for key, _ in data.items():
+                    # Check if the key exists as an attribute in the parent class
+                    if hasattr(parent_class, key):
+                        attr = getattr(parent_class, key)
+
+                        # If the attribute is an instance of a class, we should use this class for instantiation
+                        if isclass(object=attr.__class__):
+                            # Initialize the class instance
+                            instance = attr.__class__()
+
+                            # Recursively populate the instance
+                            for sub_key, sub_value in data[key].items():
+                                setattr(
+                                    instance,
+                                    sub_key,
+                                    self._dict_to_class(
+                                        data=sub_value, parent_class=instance
+                                    ),
+                                )
+
+                            return instance
+
+            # If no matching attribute/class is found, treat it as a normal dictionary
+            return {
+                key: self._dict_to_class(data=value, parent_class=None)
+                for key, value in data.items()
+            }
+
+        elif isinstance(data, list):
+            # Process each item in the list; pass None for parent_class to avoid incorrect reference
+            return [self._dict_to_class(data=item, parent_class=None) for item in data]
+
         else:
-            settings_instance = self._default_settings.__class__()
-
-        for key, value in data.items():
-            if isinstance(value, dict):
-                nested_cls = getattr(settings_instance, key).__class__
-                nested_instance: T = self._from_dict(data=value, cls=nested_cls)
-                setattr(settings_instance, key, nested_instance)
-            else:
-                setattr(settings_instance, key, value)
-
-        return settings_instance
+            # Base case: return the value as it is
+            return data
 
     def _class_to_dict(self, obj: object) -> Union[dict, list, Dict[str, Any], object]:
         """
@@ -248,11 +281,13 @@ class SettingsManagerWithClass(SettingsManagerBase[T]):
         """
         if isinstance(obj, dict):
             return {key: self._class_to_dict(obj=obj) for key, obj in obj.items()}
-        elif isinstance(obj, list):
+        elif isinstance(obj, Iterable) and not isinstance(obj, (str, bytes)):
             return [self._class_to_dict(obj=obj) for obj in obj]
         elif hasattr(obj, "__dict__"):
-            return {
-                key: self._class_to_dict(obj=value) for key, value in vars(obj).items()
+            obj_dict = {
+                key: self._class_to_dict(obj=obj) for key, obj in obj.__dict__.items()
             }
+            # Add a reference to the class for later reconstruction
+            return obj_dict
         else:
             return obj
