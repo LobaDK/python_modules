@@ -2,6 +2,7 @@ from os import unlink
 from pathlib import Path
 from dataclasses import dataclass, field
 from subprocess import run
+from typing import Union, Any, Dict
 import logging
 import unittest
 
@@ -25,8 +26,23 @@ formats: list[str] = ["json", "yaml", "toml", "ini"]
 
 
 @dataclass
+class DataclassSubSection:
+    string_key_in_sub_section: str = field(default="value")
+
+
+@dataclass
 class DataclassSection:
-    key: str = field(default="value")
+    string_key: str = field(default="value")
+    list_key: list[Union[str, object]] = field(
+        default_factory=lambda: ["value1", DataclassSubSection()]
+    )
+    dict_key: dict[str, Any] = field(
+        default_factory=lambda: {"key1": "value1", "key2": DataclassSubSection()}
+    )
+    int_key: int = 1
+    float_key: float = 1.0
+    bool_key: bool = True
+    nested_section: DataclassSubSection = field(default_factory=DataclassSubSection)
 
 
 @dataclass
@@ -34,13 +50,25 @@ class DefaultSettingsAsDataClass:
     section: DataclassSection = field(default_factory=DataclassSection)
 
 
+class ClassSubSection:
+    def __init__(self) -> None:
+        self.string_key_in_sub_section: str = "value"
+
+
 class ClassSection:
     def __init__(self) -> None:
-        self.key: str = "value"
+        self.string_key: str = "value"
+        self.list_key: list[Union[str, object]] = ["value1", ClassSubSection()]
+        self.dict_key: dict[str, Any] = {"key1": "value1", "key2": ClassSubSection()}
+        self.int_key: int = 1
+        self.float_key: float = 1.0
+        self.bool_key: bool = True
+        self.nested_section: ClassSubSection = ClassSubSection()
 
 
 class DefaultSettingsAsClass:
-    def __init__(self) -> None:
+    def __init__(self, dict: Dict = {}) -> None:
+        self.__dict__.update(dict)
         self.section: ClassSection = ClassSection()
 
 
@@ -82,8 +110,10 @@ class TestSettingsManager(unittest.TestCase):
             path=settings_path, default_settings=default_settings_as_Dataclass
         )
         self.assertEqual(
-            first=settings_manager.settings.section.key,
-            second=default_settings_as_Dataclass.section.key,
+            first=settings_manager.settings.section.dict_key[
+                "key2"
+            ].string_key_in_sub_section,
+            second="value",
         )
         unlink(path=settings_path)
 
@@ -93,14 +123,20 @@ class TestSettingsManager(unittest.TestCase):
             path="settings.json",
             default_settings=default_settings_as_Dataclass,
         )
-        settings_manager.settings.section.key = "new_value"
+        settings_manager.settings.section.string_key = "new_value"
         settings_manager.save()
         settings_manager = SettingsManagerWithDataclass(
             path="settings.json",
             default_settings=default_settings_as_Dataclass,
         )
         self.assertEqual(
-            first=settings_manager.settings.section.key, second="new_value"
+            first=settings_manager.settings.section.string_key, second="new_value"
+        )
+        self.assertEqual(
+            first=settings_manager.settings.section.dict_key[
+                "key2"
+            ].string_key_in_sub_section,
+            second="value",
         )
         unlink(path="settings.json")
 
@@ -113,7 +149,15 @@ class TestSettingsManager(unittest.TestCase):
             auto_sanitize=True,
             config_format="json",
         )
-        self.assertEqual(first=settings_manager.settings.section.key, second="value")
+        self.assertEqual(
+            first=settings_manager.settings.section.string_key, second="value"
+        )
+        self.assertEqual(
+            first=settings_manager.settings.section.dict_key[
+                "key2"
+            ].string_key_in_sub_section,
+            second="value",
+        )
         unlink(path="settings.json")
 
     def test_sanitize_settings(self) -> None:
@@ -131,6 +175,12 @@ class TestSettingsManager(unittest.TestCase):
             auto_sanitize=True,
         )
         self.assertFalse(expr=hasattr(settings_manager.settings.section, "new_key"))
+        self.assertEqual(
+            first=settings_manager.settings.section.dict_key[
+                "key2"
+            ].string_key_in_sub_section,
+            second="value",
+        )
         unlink(path="settings.json")
 
     def test_auto_save_on_exit(self) -> None:
@@ -144,7 +194,13 @@ class TestSettingsManager(unittest.TestCase):
             path="settings.json", default_settings=default_settings_as_Dataclass
         )
         self.assertEqual(
-            first=settings_manager.settings.section.key, second="new value"
+            first=settings_manager.settings.section.string_key, second="new value"
+        )
+        self.assertEqual(
+            first=settings_manager.settings.section.dict_key[
+                "key2"
+            ].string_key_in_sub_section,
+            second="value",
         )
         unlink(path="settings.json")
 
@@ -155,10 +211,16 @@ class TestSettingsManager(unittest.TestCase):
         )
 
         with settings_manager.autosave():
-            settings_manager.settings.section.key = "new value"
+            settings_manager.settings.section.string_key = "new value"
 
         self.assertEqual(
-            first=settings_manager.settings.section.key, second="new value"
+            first=settings_manager.settings.section.string_key, second="new value"
+        )
+        self.assertEqual(
+            first=settings_manager.settings.section.dict_key[
+                "key2"
+            ].string_key_in_sub_section,
+            second="value",
         )
         unlink(path="settings.json")
 
