@@ -9,7 +9,10 @@ from typing import (
     Tuple,
     Generic,
     TypeVar,
+    Set,
+    Type,
 )
+from collections.abc import Iterable
 from json import load, dump
 from configparser import ConfigParser
 from atexit import register
@@ -85,6 +88,8 @@ class SettingsManagerBase(ABC, Generic[T]):
 
         if not default_settings:
             raise ValueError("default_settings must be provided.")
+
+        self.detect_types(obj=default_settings, types=[Set, tuple])
 
         self._settings: T
         self._default_settings: T = deepcopy(x=default_settings)
@@ -499,3 +504,55 @@ class SettingsManagerBase(ABC, Generic[T]):
         It is the subclass's responsibility to implement this method to correctly handle and convert the dictionary data to the settings object.
         """
         ...
+
+    def detect_types(self, obj: Any, types: List[Type[Any]] = [Set]) -> None:
+        """
+        Recursively detects if the given object contains any of the specified types.
+
+        Args:
+            obj (Any): The object to check.
+            types (List[Type[Any]]): The list of types to detect. Defaults to [Set].
+
+        Raises:
+            TypeError: If the object contains any of the specified types.
+        """
+        if self._detect_types(obj=obj, types=types):
+            raise TypeError(
+                f"The object cannot contain any of the specified types: {types}"
+            )
+
+    def _detect_types(self, obj: Any, types: List[Type[Any]] = [set]) -> bool:
+        """
+        Recursively detects if the given object contains any of the specified types.
+
+        Args:
+            obj (Any): The object to check.
+            types (List[Type[Any]]): The list of types to detect. Defaults to [set].
+
+        Returns:
+            bool: True if the object contains any of the specified types, False otherwise.
+        """
+        if isinstance(obj, tuple(types)):
+            return True
+
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                if self._detect_types(obj=key, types=types) or self._detect_types(
+                    obj=value, types=types
+                ):
+                    return True
+
+        elif isinstance(obj, Iterable) and not isinstance(obj, (str, bytes)):
+            for item in obj:
+                if self._detect_types(obj=item, types=types):
+                    return True
+
+        elif hasattr(obj, "__dict__"):  # Check if the object is a class instance
+            for attr_name in dir(obj):
+                if not attr_name.startswith("__"):
+                    attr_value = getattr(obj, attr_name)
+                    if not callable(attr_value):
+                        if self._detect_types(obj=attr_value, types=types):
+                            return True
+
+        return False
