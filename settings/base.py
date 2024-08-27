@@ -192,9 +192,9 @@ class SettingsManagerBase(ABC, Generic[T]):
             SaveError: If there is an error while writing the settings to the file.
         """
         logger.debug(msg=f"Save requested by {get_caller_stack(instances=[self])}...")
-        settings_data: Dict[str, Any] = self._to_dict(obj=self.settings)
         if self._auto_sanitize_on_save:
             self.sanitize_settings()
+        settings_data: Dict[str, Any] = self._to_dict(obj=self.settings)
         if self._format == "ini" and not self.valid_ini_format(data=settings_data):
             logger.error(
                 msg="The INI format requires top-level keys to be sections, with settings as nested dictionaries. Please ensure your data follows this structure."
@@ -351,7 +351,7 @@ class SettingsManagerBase(ABC, Generic[T]):
             msg=f"Sanitization requested by {get_caller_stack(instances=[self])}..."
         )
         settings: Dict[str, Any] = self._to_dict(obj=self.settings)
-        default_settings: Dict[str, Any] = self._to_dict(obj=self._default_settings)
+        default_settings: Dict[str, Any] = deepcopy(x=settings)
 
         try:
             keys_to_remove, keys_to_add = self._sanitize_settings(
