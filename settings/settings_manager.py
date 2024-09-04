@@ -81,9 +81,6 @@ class SettingsManagerWithDataclass(SettingsManagerBase[T]):
         with settings_manager.autosave():
             settings_manager.settings.section.section_key = "section_value"
         ```
-
-
-
     """
 
     def _to_dict(self, obj: "DataclassInstance") -> Dict[str, Any]:
