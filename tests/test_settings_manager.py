@@ -2,7 +2,7 @@ from os import unlink
 from pathlib import Path
 from dataclasses import dataclass, field
 from subprocess import run
-from typing import Union, Any, Dict
+from typing import Union, Any, Dict, List
 import logging
 import unittest
 
@@ -33,11 +33,11 @@ class DataclassSubSection:
 @dataclass
 class DataclassSection:
     string_key: str = field(default="value")
-    list_key: list[Union[str, object]] = field(
-        default_factory=lambda: ["value1", DataclassSubSection()]
+    list_key: List[Union[str, Dict[str, Any]]] = field(
+        default_factory=lambda: ["value1", {"key1": "value1"}]
     )
-    dict_key: dict[str, Any] = field(
-        default_factory=lambda: {"key1": "value1", "key2": DataclassSubSection()}
+    dict_key: Dict[str, Any] = field(
+        default_factory=lambda: {"key1": "value1", "key2": "value2"}
     )
     int_key: int = 1
     float_key: float = 1.0
@@ -58,8 +58,8 @@ class ClassSubSection:
 class ClassSection:
     def __init__(self) -> None:
         self.string_key: str = "value"
-        self.list_key: list[Union[str, object]] = ["value1", ClassSubSection()]
-        self.dict_key: dict[str, Any] = {"key1": "value1", "key2": ClassSubSection()}
+        self.list_key: List[Union[str, object]] = ["value1", ClassSubSection()]
+        self.dict_key: Dict[str, Any] = {"key1": "value1", "key2": ClassSubSection()}
         self.int_key: int = 1
         self.float_key: float = 1.0
         self.bool_key: bool = True
@@ -103,17 +103,99 @@ class TestSettingsManager(unittest.TestCase):
                 path="settings.txt", default_settings={"key": "value"}
             )
 
-    def test_get_settings(self) -> None:
+    def test_get_all_dataclass_settings(self) -> None:
         # Test that we can get the settings from the settings manager like a dictionary
         settings_path: str = "settings.json"
         settings_manager = SettingsManagerWithDataclass(
             path=settings_path, default_settings=default_settings_as_Dataclass
         )
         self.assertEqual(
+            first=settings_manager.settings.section.string_key,
+            second=default_settings_as_Dataclass.section.string_key,
+        )
+        self.assertEqual(
+            first=settings_manager.settings.section.int_key,
+            second=default_settings_as_Dataclass.section.int_key,
+        )
+        self.assertEqual(
+            first=settings_manager.settings.section.float_key,
+            second=default_settings_as_Dataclass.section.float_key,
+        )
+        self.assertEqual(
+            first=settings_manager.settings.section.bool_key,
+            second=default_settings_as_Dataclass.section.bool_key,
+        )
+        self.assertEqual(
+            first=settings_manager.settings.section.list_key[0],
+            second=default_settings_as_Dataclass.section.list_key[0],
+        )
+        self.assertEqual(
+            first=settings_manager.settings.section.list_key[1]["key1"],
+            second=default_settings_as_Dataclass.section.list_key[1]["key1"],
+        )
+        self.assertEqual(
+            first=settings_manager.settings.section.dict_key["key1"],
+            second=default_settings_as_Dataclass.section.dict_key["key1"],
+        )
+        self.assertEqual(
+            first=settings_manager.settings.section.dict_key["key2"],
+            second=default_settings_as_Dataclass.section.dict_key["key2"],
+        )
+        self.assertEqual(
+            first=settings_manager.settings.section.nested_section.string_key_in_sub_section,
+            second=default_settings_as_Dataclass.section.nested_section.string_key_in_sub_section,
+        )
+        unlink(path=settings_path)
+
+    def test_get_all_class_settings(self) -> None:
+        # Test that we can get the settings from the settings manager like a dictionary
+        settings_path: str = "settings.json"
+        settings_manager = SettingsManagerWithClass(
+            path=settings_path, default_settings=default_settings_as_Class
+        )
+        self.assertEqual(
+            first=settings_manager.settings.section.string_key,
+            second=default_settings_as_Class.section.string_key,
+        )
+        self.assertEqual(
+            first=settings_manager.settings.section.int_key,
+            second=default_settings_as_Class.section.int_key,
+        )
+        self.assertEqual(
+            first=settings_manager.settings.section.float_key,
+            second=default_settings_as_Class.section.float_key,
+        )
+        self.assertEqual(
+            first=settings_manager.settings.section.bool_key,
+            second=default_settings_as_Class.section.bool_key,
+        )
+        self.assertEqual(
+            first=settings_manager.settings.section.list_key[0],
+            second=default_settings_as_Class.section.list_key[0],
+        )
+        self.assertEqual(
+            first=settings_manager.settings.section.list_key[
+                1
+            ].string_key_in_sub_section,
+            second=default_settings_as_Class.section.list_key[
+                1
+            ].string_key_in_sub_section,
+        )
+        self.assertEqual(
+            first=settings_manager.settings.section.dict_key["key1"],
+            second=default_settings_as_Class.section.dict_key["key1"],
+        )
+        self.assertEqual(
             first=settings_manager.settings.section.dict_key[
                 "key2"
             ].string_key_in_sub_section,
-            second="value",
+            second=default_settings_as_Class.section.dict_key[
+                "key2"
+            ].string_key_in_sub_section,
+        )
+        self.assertEqual(
+            first=settings_manager.settings.section.nested_section.string_key_in_sub_section,
+            second=default_settings_as_Class.section.nested_section.string_key_in_sub_section,
         )
         unlink(path=settings_path)
 
@@ -132,12 +214,6 @@ class TestSettingsManager(unittest.TestCase):
         self.assertEqual(
             first=settings_manager.settings.section.string_key, second="new_value"
         )
-        self.assertEqual(
-            first=settings_manager.settings.section.dict_key[
-                "key2"
-            ].string_key_in_sub_section,
-            second="value",
-        )
         unlink(path="settings.json")
 
     def test_all_parameters(self) -> None:
@@ -151,12 +227,6 @@ class TestSettingsManager(unittest.TestCase):
         )
         self.assertEqual(
             first=settings_manager.settings.section.string_key, second="value"
-        )
-        self.assertEqual(
-            first=settings_manager.settings.section.dict_key[
-                "key2"
-            ].string_key_in_sub_section,
-            second="value",
         )
         unlink(path="settings.json")
 
@@ -175,12 +245,6 @@ class TestSettingsManager(unittest.TestCase):
             auto_sanitize=True,
         )
         self.assertFalse(expr=hasattr(settings_manager.settings.section, "new_key"))
-        self.assertEqual(
-            first=settings_manager.settings.section.dict_key[
-                "key2"
-            ].string_key_in_sub_section,
-            second="value",
-        )
         unlink(path="settings.json")
 
     def test_auto_save_on_exit(self) -> None:
@@ -196,12 +260,6 @@ class TestSettingsManager(unittest.TestCase):
         self.assertEqual(
             first=settings_manager.settings.section.string_key, second="new value"
         )
-        self.assertEqual(
-            first=settings_manager.settings.section.dict_key[
-                "key2"
-            ].string_key_in_sub_section,
-            second="value",
-        )
         unlink(path="settings.json")
 
     def test_save_context_manager(self) -> None:
@@ -215,12 +273,6 @@ class TestSettingsManager(unittest.TestCase):
 
         self.assertEqual(
             first=settings_manager.settings.section.string_key, second="new value"
-        )
-        self.assertEqual(
-            first=settings_manager.settings.section.dict_key[
-                "key2"
-            ].string_key_in_sub_section,
-            second="value",
         )
         unlink(path="settings.json")
 
