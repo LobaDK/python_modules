@@ -11,7 +11,6 @@ from typing import (
     TypeVar,
     Set,
     Type,
-    Union,
 )
 from collections.abc import Iterable
 from json import load, dump
