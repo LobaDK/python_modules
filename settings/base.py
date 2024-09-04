@@ -11,6 +11,7 @@ from typing import (
     TypeVar,
     Set,
     Type,
+    Union,
 )
 from collections.abc import Iterable
 from json import load, dump
@@ -89,8 +90,6 @@ class SettingsManagerBase(ABC, Generic[T]):
         if not default_settings:
             raise ValueError("default_settings must be provided.")
 
-        self.detect_types(obj=default_settings, types=[Set, tuple])
-
         self._settings: T
         self._default_settings: T = deepcopy(x=default_settings)
 
@@ -103,6 +102,8 @@ class SettingsManagerBase(ABC, Generic[T]):
             msg=f"\n=========== Initializing SettingsManager ===========\nSystem info: {system()} {version()} {architecture()[0]} Python {python_version()}\n"
         )
         logger.debug(msg=f"args: {filter_locals(locals_dict=locals())}")
+
+        self.detect_invalid_types(obj=default_settings, types=[Set, tuple])
 
         if YAML_INSTALLED:
             logger.debug(msg="YAML module is installed, importing...")
@@ -505,7 +506,7 @@ class SettingsManagerBase(ABC, Generic[T]):
         """
         ...
 
-    def detect_types(self, obj: Any, types: List[Type[Any]] = [Set]) -> None:
+    def detect_invalid_types(self, obj: Any, types: List[Type[Any]] = [Set]) -> None:
         """
         Recursively detects if the given object contains any of the specified types.
 
@@ -516,12 +517,15 @@ class SettingsManagerBase(ABC, Generic[T]):
         Raises:
             TypeError: If the object contains any of the specified types.
         """
-        if self._detect_types(obj=obj, types=types):
+        logger.debug(
+            msg=f"Checking if object {obj} contains any of the specified types: {types}..."
+        )
+        if self._detect_invalid_types(obj=obj, types=types):
             raise TypeError(
                 f"The object cannot contain any of the specified types: {types}"
             )
 
-    def _detect_types(self, obj: Any, types: List[Type[Any]] = [set]) -> bool:
+    def _detect_invalid_types(self, obj: Any, types: List[Type[Any]] = [set]) -> bool:
         """
         Recursively detects if the given object contains any of the specified types.
 
@@ -532,27 +536,49 @@ class SettingsManagerBase(ABC, Generic[T]):
         Returns:
             bool: True if the object contains any of the specified types, False otherwise.
         """
+        logger.debug(msg=f"Checking object/value: {obj}...")
         if isinstance(obj, tuple(types)):
             return True
 
         if isinstance(obj, dict):
+            logger.debug(msg="Object is a dictionary; checking keys and values...")
             for key, value in obj.items():
-                if self._detect_types(obj=key, types=types) or self._detect_types(
-                    obj=value, types=types
-                ):
+                if self._detect_invalid_types(obj=key, types=types):
+                    logger.debug(msg=f"Found type {type(key)} in key: {key}.")
+                    return True
+                elif self._detect_invalid_types(obj=value, types=types):
+                    logger.debug(msg=f"Found type {type(value)} in value: {value}.")
                     return True
 
         elif isinstance(obj, Iterable) and not isinstance(obj, (str, bytes)):
+            logger.debug(msg="Object is an iterable; checking items...")
             for item in obj:
-                if self._detect_types(obj=item, types=types):
+                if self._detect_invalid_types(obj=item, types=types):
+                    logger.debug(msg=f"Found type {type(item)} in item: {item}.")
                     return True
 
         elif hasattr(obj, "__dict__"):  # Check if the object is a class instance
+            logger.debug(msg="Object is a class instance; checking attributes...")
             for attr_name in dir(obj):
-                if not attr_name.startswith("__"):
-                    attr_value = getattr(obj, attr_name)
-                    if not callable(attr_value):
-                        if self._detect_types(obj=attr_value, types=types):
-                            return True
+                if attr_name.startswith("__"):
+                    logger.debug(
+                        msg=f"Skipping attribute: {attr_name}; Reason: Dunder method."
+                    )
+                    continue
 
+                attr_value = getattr(obj, attr_name)
+
+                if callable(attr_value):
+                    logger.debug(
+                        msg=f"Skipping attribute: {attr_name}; Reason: Callable."
+                    )
+                    continue
+
+                if self._detect_invalid_types(obj=attr_value, types=types):
+                    logger.debug(
+                        msg=f"Found type {type(attr_value)} in attribute: {attr_name}."
+                    )
+                    return True
+
+        logger.debug(msg=f"Object {obj} does not contain any of the specified types.")
         return False
