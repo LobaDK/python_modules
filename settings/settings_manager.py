@@ -224,50 +224,6 @@ class SettingsManagerWithClass(SettingsManagerBase[T]):
         logger.debug(msg=f"Converting data to settings object: {data}")
         return loads(s=dumps(obj=data), object_hook=self._default_settings.__class__)
 
-    def _dict_to_class(
-        self,
-        data: Union[Dict[str, Any], List, Any],
-        parent_class: Optional[object] = None,
-    ) -> Any:
-        if isinstance(data, dict):
-            if parent_class is not None:
-                # Iterate over each key-value pair in the dictionary
-                for key, _ in data.items():
-                    # Check if the key exists as an attribute in the parent class
-                    if hasattr(parent_class, key):
-                        attr = getattr(parent_class, key)
-
-                        # If the attribute is an instance of a class, we should use this class for instantiation
-                        if isclass(object=attr.__class__):
-                            # Initialize the class instance
-                            instance = attr.__class__()
-
-                            # Recursively populate the instance
-                            for sub_key, sub_value in data[key].items():
-                                setattr(
-                                    instance,
-                                    sub_key,
-                                    self._dict_to_class(
-                                        data=sub_value, parent_class=instance
-                                    ),
-                                )
-
-                            return instance
-
-            # If no matching attribute/class is found, treat it as a normal dictionary
-            return {
-                key: self._dict_to_class(data=value, parent_class=None)
-                for key, value in data.items()
-            }
-
-        elif isinstance(data, list):
-            # Process each item in the list; pass None for parent_class to avoid incorrect reference
-            return [self._dict_to_class(data=item, parent_class=None) for item in data]
-
-        else:
-            # Base case: return the value as it is
-            return data
-
     def _class_to_dict(self, obj: object) -> Union[dict, list, Dict[str, Any], object]:
         """
         Recursively converts a given object to a dictionary representation.
