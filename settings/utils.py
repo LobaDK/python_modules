@@ -20,7 +20,7 @@ def set_file_paths(
     path: Optional[str] = None,
     read_path: Optional[str] = None,
     write_path: Optional[str] = None,
-) -> tuple[Path, Path]:
+) -> Tuple[Path, Path]:
     """
     Attempts to resolve any relative paths and returns the Path objects for the read and write paths.
 
