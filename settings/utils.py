@@ -170,7 +170,7 @@ def _determine_format_from_file_extension(
         return extension_to_format[read_path_suffix]
     else:
         raise UnsupportedFormatError(
-            f"Trying to determine format from file extension, got {read_path_suffix} but only {', '.join(SUPPORTED_FORMATS)} are supported."
+            f"Trying to determine format from file extension, got {read_path_suffix} but only {', '.join(SUPPORTED_FORMATS)} is supported."
         )
 
 
@@ -228,13 +228,13 @@ def get_caller_stack(instances: Optional[Iterable[object]] = None) -> str:
     """
     Gets a stack of callers leading up to the caller of the function, if available.
 
-    Optionally, an iterable of instances that should be considered local methods and ignored, can be provided.
+    Optionally, an iterable of instances that should be considered local methods and crawled, can be provided.
 
     Args:
-        instances (Optional[Iterable[object]]): An iterable of instances that should be considered local methods and ignored.
+        instances (Optional[Iterable[object]]): An iterable of instances that should be considered local methods and crawled.
 
     Returns:
-        str: The name of the caller of the function. If no caller can be determined, returns "Unknown".
+        str: The name or names of the caller(s) leading up to the caller of the function. If the caller is not found, "Unknown" is returned.
 
     Examples:
         >>> get_caller_stack()
