@@ -523,12 +523,10 @@ class SettingsManagerBase(ABC, Generic[T]):
         Raises:
             TypeError: If the object contains any of the specified types.
         """
-        logger.debug(
-            msg=f"Checking if object {obj} contains any of the specified types: {types}..."
-        )
+        logger.debug(msg=f'Object to check: "{obj}"\nTypes to detect: "{types}"')
         if self._detect_invalid_types(obj=obj, types=types):
             raise TypeError(
-                f"The object cannot contain any of the specified types: {types}"
+                f'The object cannot contain any of the specified types: "{types}"'
             )
 
     def _detect_invalid_types(self, obj: Any, types: List[Type[Any]] = [set]) -> bool:
@@ -542,7 +540,7 @@ class SettingsManagerBase(ABC, Generic[T]):
         Returns:
             bool: True if the object contains any of the specified types, False otherwise.
         """
-        logger.debug(msg=f"Checking object/value: {obj}...")
+        logger.debug(msg=f'Checking object/value: "{obj}"...')
         if isinstance(obj, tuple(types)):
             return True
 
@@ -550,17 +548,17 @@ class SettingsManagerBase(ABC, Generic[T]):
             logger.debug(msg="Object is a dictionary; checking keys and values...")
             for key, value in obj.items():
                 if self._detect_invalid_types(obj=key, types=types):
-                    logger.debug(msg=f"Found type {type(key)} in key: {key}.")
+                    logger.debug(msg=f'Found type "{type(key)}" in key: "{key}".')
                     return True
                 elif self._detect_invalid_types(obj=value, types=types):
-                    logger.debug(msg=f"Found type {type(value)} in value: {value}.")
+                    logger.debug(msg=f'Found type "{type(value)}" in value: "{value}".')
                     return True
 
         elif isinstance(obj, Iterable) and not isinstance(obj, (str, bytes)):
             logger.debug(msg="Object is an iterable; checking items...")
             for item in obj:
                 if self._detect_invalid_types(obj=item, types=types):
-                    logger.debug(msg=f"Found type {type(item)} in item: {item}.")
+                    logger.debug(msg=f'Found type "{type(item)}" in item: "{item}".')
                     return True
 
         elif hasattr(obj, "__dict__"):  # Check if the object is a class instance
@@ -568,7 +566,7 @@ class SettingsManagerBase(ABC, Generic[T]):
             for attr_name in dir(obj):
                 if attr_name.startswith("__"):
                     logger.debug(
-                        msg=f"Skipping attribute: {attr_name}; Reason: Dunder method."
+                        msg=f'Skipping attribute: "{attr_name}"; Reason: Dunder method.'
                     )
                     continue
 
@@ -576,17 +574,17 @@ class SettingsManagerBase(ABC, Generic[T]):
 
                 if callable(attr_value):
                     logger.debug(
-                        msg=f"Skipping attribute: {attr_name}; Reason: Callable."
+                        msg=f'Skipping attribute: "{attr_name}"; Reason: Callable.'
                     )
                     continue
 
                 if self._detect_invalid_types(obj=attr_value, types=types):
                     logger.debug(
-                        msg=f"Found type {type(attr_value)} in attribute: {attr_name}."
+                        msg=f'Found type "{type(attr_value)}" in attribute: "{attr_name}".'
                     )
                     return True
 
-        logger.debug(msg=f"Object {obj} does not contain any of the specified types.")
+        logger.debug(msg=f'Object "{obj}" is not of any of the specified types.')
         return False
 
     def _convert_value(self, value: str) -> Any:
