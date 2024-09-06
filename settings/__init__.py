@@ -18,7 +18,10 @@ TOML_INSTALLED: bool = False
 
 
 def _is_module_installed(module_name: str) -> bool:
-    return find_spec(name=module_name) is not None
+    try:
+        return find_spec(name=module_name) is not None
+    except ValueError:
+        return False
 
 
 YAML_INSTALLED = _is_module_installed(module_name="yaml")
