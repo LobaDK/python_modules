@@ -180,9 +180,12 @@ class SettingsManagerBase(ABC, Generic[T]):
                 msg=f"Could not find settings file {self._read_path}; applying default settings and saving to new file."
             )
             self.settings = deepcopy(x=self._default_settings)
-            self.save()  # Save the default settings to the file
+            logger.debug(
+                msg="Skipping sanitization on first-time load because default settings were applied."
+            )
+            self.save(skip_sanitize=True)  # Save the default settings to the file
 
-    def save(self) -> None:
+    def save(self, skip_sanitize: bool = False) -> None:
         """
         Save the settings data to a file.
 
@@ -192,7 +195,7 @@ class SettingsManagerBase(ABC, Generic[T]):
             SaveError: If there is an error while writing the settings to the file.
         """
         logger.debug(msg=f"Save requested by {get_caller_stack(instances=[self])}...")
-        if self._auto_sanitize_on_save:
+        if self._auto_sanitize_on_save and not skip_sanitize:
             self.sanitize_settings()
         settings_data: Dict[str, Any] = self._to_dict(obj=self.settings)
         if self._format == "ini" and not self.valid_ini_format(data=settings_data):
@@ -269,7 +272,7 @@ class SettingsManagerBase(ABC, Generic[T]):
             config[section] = settings
         config.write(fp=file)
 
-    def load(self) -> None:
+    def load(self, skip_sanitize: bool = False) -> None:
         """
         Load the settings from the specified file into the internal data attribute. autosave_on_change is not triggered by this method.
 
@@ -287,7 +290,7 @@ class SettingsManagerBase(ABC, Generic[T]):
                         msg="Settings file is empty or could not be read. Applying default settings."
                     )
                     self.settings = deepcopy(x=self._default_settings)
-                if self._auto_sanitize_on_load:
+                if self._auto_sanitize_on_load and not skip_sanitize:
                     self.sanitize_settings()
                 logger.debug(msg=f"Settings loaded from {self._read_path}.")
             except IOError as e:
