@@ -1,11 +1,17 @@
 """
-Settings Manager package for handling settings and configuration files in JSON, YAML, TOML, and INI formats.
-
 Author: Nicklas H. (LobaDK)
 Date: 2024
 URL: https://github.com/LobaDK/python_modules
 
-This package provides a SettingsManager base class and two fully implemented and ready-to-use classes, "SettingsManagerWithDataclass" and "SettingsManagerWithClass". for handling settings and configuration files in JSON, YAML, TOML, and INI formats. It is provided "as is" for anyone to use, modify, and distribute, freely and openly. While not required, credit back to the original author is appreciated.
+Settings Manager package for handling settings and configuration files in JSON, YAML, TOML, and INI formats.
+
+`base.py`: Contains the base class `SettingsManagerBase` which includes all or the majority of the functionality for handling the settings and configuration files. Subclasses should inherit from this class and implement the abstract methods to provide the necessary functionality for the specific object type they wish to employ.
+
+`settings_manager.py`: Contains two fully implemented and ready-to-use classes, `SettingsManagerWithDataclass` and `SettingsManagerWithClass`, for working with settings created as dataclasses or classes.
+
+Please keep in mind that limitations and restrictions employed by the specific file formats also extend to this package. For example, INI files do not support nested sections, and TOML only supports nesting in the form of tables (dictionaries).
+
+This package is provided "as is" for anyone to use, modify, and distribute, freely and openly. While not required, credit back to the original author is appreciated.
 
 This package is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 """
