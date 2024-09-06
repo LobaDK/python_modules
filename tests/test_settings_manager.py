@@ -1,6 +1,7 @@
 from os import unlink
 from subprocess import run
 from typing import Dict, Union, List, Tuple
+from unittest.mock import patch, mock_open
 import logging
 import unittest
 
@@ -9,7 +10,7 @@ from settings.settings_manager import (
     SettingsManagerWithDataclass,
     SettingsManagerWithClass,
 )
-from settings.exceptions import UnsupportedFormatError
+from settings.exceptions import UnsupportedFormatError, LoadError, SaveError
 from tests.classes.settings_classes import (
     DefaultSettingsAsDataClass,
     DefaultINIFileSettingsAsDataClass,
@@ -24,7 +25,7 @@ logger: logging.Logger = LogHelper.create_logger(
     logger_name="settings",
     log_file="./tests.log",
     file_log_level=logging.DEBUG,
-    stream_log_level=logging.ERROR,
+    stream_log_level=logging.CRITICAL,
     ignore_existing=True,
 )
 
@@ -80,6 +81,25 @@ class TestSettingsManager(unittest.TestCase):
                 unlink(path=f"settings.{format}")
             except FileNotFoundError:
                 pass
+
+    def test_os_error_on_load_and_save(self) -> None:
+        for format in formats:
+            for settings_class, manager in formats[format]:
+                with self.subTest(format=format, settings_class=settings_class):
+                    settings_manager: Union[
+                        SettingsManagerWithDataclass, SettingsManagerWithClass
+                    ] = manager(
+                        path=f"settings.{format}", default_settings=settings_class
+                    )
+                    with patch("builtins.open", mock_open()) as mocked_open:
+                        mocked_open.side_effect = OSError
+                        with self.assertRaises(expected_exception=LoadError):
+                            settings_manager.load()
+
+                        with self.assertRaises(expected_exception=SaveError):
+                            settings_manager.save()
+
+                unlink(path=f"settings.{format}")
 
     def test_get_format(self) -> None:
         for format in formats:
