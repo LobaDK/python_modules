@@ -208,13 +208,13 @@ class SettingsManagerBase(ABC, Generic[T]):
             raise IniFormatError(
                 "The INI format requires top-level keys to be sections, with settings as nested dictionaries. Please ensure your data follows this structure."
             )
-        with open(file=self._write_path, mode="w") as file:
-            try:
+        try:
+            with open(file=self._write_path, mode="w") as file:
                 self._write(data=settings_data, file=file)
                 logger.debug(msg=f"Settings saved to {self._write_path}.")
-            except IOError as e:
-                logger.exception(msg="Error while writing settings to file.")
-                raise SaveError("Error while writing settings to file.") from e
+        except IOError as e:
+            logger.exception(msg="Error trying to write settings to file.")
+            raise SaveError("Error trying to write settings to file.") from e
 
     @contextmanager
     def autosave(self) -> Generator[None, Any, None]:
@@ -288,8 +288,8 @@ class SettingsManagerBase(ABC, Generic[T]):
             LoadError: If there is an error while reading the settings from the file. The original exception is preserved.
         """
         logger.debug(msg=f"Load requested by {get_caller_stack(instances=[self])}...")
-        with open(file=self._read_path, mode="r") as f:
-            try:
+        try:
+            with open(file=self._read_path, mode="r") as f:
                 self.settings = self._from_dict(data=self._read(file=f))
                 if not self.settings:
                     logger.warning(
@@ -299,9 +299,9 @@ class SettingsManagerBase(ABC, Generic[T]):
                 if self._auto_sanitize_on_load and not skip_sanitize:
                     self.sanitize_settings()
                 logger.debug(msg=f"Settings loaded from {self._read_path}.")
-            except IOError as e:
-                logger.exception(msg="Error while reading settings from file.")
-                raise LoadError("Error while reading settings from file.") from e
+        except Exception as e:
+            logger.exception(msg="Error trying to read settings from file.")
+            raise LoadError("Error trying to read settings from file.") from e
 
     def _read(self, file: IO) -> Dict[str, Any]:
         """
