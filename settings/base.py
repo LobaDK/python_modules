@@ -168,7 +168,7 @@ class SettingsManagerBase(ABC, Generic[T]):
 
     def _first_time_load(self) -> None:
         """
-        Loads the settings from the file if it exists, otherwise applies default settings and saves them to the file.
+        Loads the settings from the file if it exists, otherwise applies default settings and saves them to the file. Skips sanitization if the default settings are applied for the first time.
         """
         if self._read_path.exists():
             logger.info(
@@ -189,7 +189,10 @@ class SettingsManagerBase(ABC, Generic[T]):
         """
         Save the settings data to a file.
 
-        If the auto_sanitize flag is set to True, the settings will be sanitized before saving.
+        If enabled, the settings will be sanitized before being saved.
+
+        Args:
+            skip_sanitize (bool): Flag indicating whether to skip the sanitization process before saving. Defaults to False.
 
         Raises:
             SaveError: If there is an error while writing the settings to the file.
@@ -218,7 +221,7 @@ class SettingsManagerBase(ABC, Generic[T]):
         """
         A context manager that allows you to save the settings data to a file within a context block.
 
-        If the auto_sanitize flag is set to True, the settings will be sanitized before saving.
+        If enabled, the settings will be sanitized before being saved.
 
         Yields:
             None: The context manager yields None.
@@ -274,12 +277,15 @@ class SettingsManagerBase(ABC, Generic[T]):
 
     def load(self, skip_sanitize: bool = False) -> None:
         """
-        Load the settings from the specified file into the internal data attribute. autosave_on_change is not triggered by this method.
+        Load the settings from the specified file, and wrap them into the settings object.
 
-        If the auto_sanitize flag is set to True, the settings will be sanitized after reading.
+        If enabled, the settings will be sanitized before being applied.
+
+        Args:
+            skip_sanitize (bool): Flag indicating whether to skip the sanitization process after loading. Defaults to False.
 
         Raises:
-            LoadError: If there is an error while reading the settings from the file.
+            LoadError: If there is an error while reading the settings from the file. The original exception is preserved.
         """
         logger.debug(msg=f"Load requested by {get_caller_stack(instances=[self])}...")
         with open(file=self._read_path, mode="r") as f:
@@ -306,9 +312,6 @@ class SettingsManagerBase(ABC, Generic[T]):
 
         Returns:
             Dict[str, Any]: The settings data read from the file.
-
-        Raises:
-            UnsupportedFormatError: If the format is not in the list of supported formats.
         """
         format_to_function: Dict[str, Callable[[IO], Dict[str, Any]]] = {
             "json": self._read_as_json,
@@ -346,9 +349,7 @@ class SettingsManagerBase(ABC, Generic[T]):
 
     def sanitize_settings(self) -> None:
         """
-        Sanitizes the settings data by applying the default settings and removing any invalid or unnecessary values.
-
-        The sanitization process is directly applied to the internal data attribute.
+        Sanitizes the settings data by comparing it to the default settings and removing any invalid or unnecessary values.
 
         Raises:
             SanitizationError: If an error occurs while sanitizing the settings.
@@ -358,7 +359,7 @@ class SettingsManagerBase(ABC, Generic[T]):
             msg=f"Sanitization requested by {get_caller_stack(instances=[self])}..."
         )
         settings: Dict[str, Any] = self._to_dict(obj=self.settings)
-        default_settings: Dict[str, Any] = deepcopy(x=settings)
+        default_settings: Dict[str, Any] = self._to_dict(obj=self._default_settings)
 
         try:
             keys_to_remove, keys_to_add = self._sanitize_settings(
@@ -393,6 +394,17 @@ class SettingsManagerBase(ABC, Generic[T]):
         default_settings: Dict[str, Any],
         dict_path: str,
     ) -> Tuple[List[str], Dict[str, Any]]:
+        """
+        Sanitizes the settings dictionary by removing keys that are not present in the default settings and adding missing keys from the default settings.
+
+        Args:
+            settings (Dict[str, Any]): The settings dictionary to be sanitized.
+            default_settings (Dict[str, Any]): The default settings dictionary.
+            dict_path (str): The current dictionary path.
+
+        Returns:
+            Tuple[List[str], Dict[str, Any]]: A tuple containing the list of keys to remove and the dictionary of keys to add.
+        """
 
         keys_to_remove: List[str] = []
         keys_to_add: Dict[str, Any] = {}
@@ -488,7 +500,7 @@ class SettingsManagerBase(ABC, Generic[T]):
 
     def restore_defaults(self) -> None:
         """
-        Restores the stored settings to the default settings.
+        Restores the stored settings to the default settings by copying the default settings that were initially provided at startup. Only the settings object is restored; manual saving is required to update the settings file.
         """
         self.settings = deepcopy(x=self._default_settings)
 
