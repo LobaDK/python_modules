@@ -335,10 +335,14 @@ class SettingsManagerBase(ABC, Generic[T]):
     def _read_as_ini(self, file: IO) -> Dict[str, Any]:
         config = ConfigParser(allow_no_value=True)
         config.read_file(f=file)
-        return {
-            section: dict(config.items(section=section))
-            for section in config.sections()
-        }
+
+        converted_config = {}
+        for section in config.sections():
+            converted_config[section] = {}
+            for key, value in config.items(section=section):
+                converted_config[section][key] = self._convert_value(value=value)
+
+        return converted_config
 
     def sanitize_settings(self) -> None:
         """
@@ -584,3 +588,29 @@ class SettingsManagerBase(ABC, Generic[T]):
 
         logger.debug(msg=f"Object {obj} does not contain any of the specified types.")
         return False
+
+    def _convert_value(self, value: str) -> Any:
+        """
+        Convert a string value to its respective type.
+
+        Used to by the INI format to convert string values to their respective types.
+
+        Args:
+            value (str): The string value to convert.
+
+        Returns:
+            Any: The converted value.
+        """
+        if value == "":
+            return None
+        if value.lower() in {"true", "false"}:
+            return value.lower() == "true"
+        try:
+            return int(value)
+        except ValueError:
+            pass
+        try:
+            return float(value)
+        except ValueError:
+            pass
+        return value
