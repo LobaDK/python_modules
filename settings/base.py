@@ -339,7 +339,7 @@ class SettingsManagerBase(ABC, Generic[T]):
         config = ConfigParser(allow_no_value=True)
         config.read_file(f=file)
 
-        converted_config = {}
+        converted_config: Dict[str, Any] = {}
         for section in config.sections():
             converted_config[section] = {}
             for key, value in config.items(section=section):
